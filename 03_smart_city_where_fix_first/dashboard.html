@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Metrix — Smart City Priority Operations</title>
+<meta name="description" content="Metrix: Explainable Civic Infrastructure Prioritization & Geographic Problem Navigator"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+tailwind.config={darkMode:"class",theme:{extend:{colors:{"primary-container":"#b9f36a","on-primary-container":"#466f00","primary":"#fefff2","on-primary":"#203600","secondary":"#ffb3af","on-secondary":"#68000d","secondary-container":"#920418","secondary-fixed-dim":"#ffb3af","tertiary-fixed-dim":"#ffb955","surface":"#101419","surface-container-lowest":"#0a0f13","surface-container-low":"#181c21","surface-container":"#1c2025","surface-container-high":"#262a30","surface-container-highest":"#31353b","on-surface":"#e0e2ea","on-surface-variant":"#c3c9b3","primary-fixed":"#baf46b","outline":"#8d937f","background":"#101419","on-background":"#e0e2ea"},fontFamily:{"space-grotesk":["Space Grotesk"],"manrope":["Manrope"]},borderRadius:{"DEFAULT":"0.5rem","lg":"0.75rem","xl":"1rem","full":"9999px"}}}};
+</script>
+<style>
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;font-family:'Manrope',sans-serif;height:100%;overflow-x:hidden;}
+body{background:#0a0f13;color:#e0e2ea;overscroll-behavior:none;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:#0a0f13;}
+::-webkit-scrollbar-thumb{background:#31353b;border-radius:4px;}
+.sg{font-family:'Space Grotesk',sans-serif;}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+
+/* SIDEBAR & LAYOUT TRANSITIONS */
+#sidebar{
+  position:fixed;left:0;top:0;width:240px;height:100%;
+  background:#101419;z-index:50;display:flex;flex-direction:column;
+  justify-content:space-between;box-shadow:2px 0 12px rgba(0,0,0,.6);
+  transition:width .25s cubic-bezier(0.4,0,0.2,1);
+  border-right:1px solid #1c2025;
+}
+#main-content{
+  margin-left:240px;min-height:100vh;display:flex;flex-direction:column;
+  transition:margin-left .25s cubic-bezier(0.4,0,0.2,1);
+}
+body.sidebar-collapsed #sidebar{width:68px;}
+body.sidebar-collapsed #main-content{margin-left:68px;}
+body.sidebar-collapsed .sidebar-text,
+body.sidebar-collapsed .sidebar-badge{display:none !important;}
+body.sidebar-collapsed .nav-btn{justify-content:center;padding:10px 0;}
+body.sidebar-collapsed .sidebar-brand-text{display:none !important;}
+body.sidebar-collapsed .sidebar-footer-info{display:none !important;}
+
+.nav-btn{
+  display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;
+  transition:all .15s;text-align:left;width:100%;border:none;cursor:pointer;
+  background:transparent;color:#c3c9b3;font-family:'Space Grotesk',sans-serif;
+  font-size:.875rem;font-weight:600;letter-spacing:.02em;margin-bottom:4px;
+}
+.nav-btn.active{background:#262a30;color:#b9f36a;}
+.nav-btn:hover:not(.active){background:#1c2025;color:#e0e2ea;}
+
+.kpi-card{background:#181c21;border:1px solid #1c2025;border-radius:.75rem;padding:1rem;display:flex;align-items:center;justify-content:space-between;}
+.chart-card{background:#181c21;border:1px solid #1c2025;border-radius:.75rem;padding:1rem;}
+.table-card{background:#181c21;border:1px solid #1c2025;border-radius:.75rem;overflow:hidden;}
+.metric-val{font-family:'Space Grotesk',sans-serif;font-size:1.75rem;font-weight:700;letter-spacing:-.02em;line-height:2rem;}
+.label-sm{font-family:'Space Grotesk',sans-serif;font-size:.6875rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+.label-md{font-family:'Space Grotesk',sans-serif;font-size:.75rem;font-weight:600;letter-spacing:.04em;}
+.label-lg{font-family:'Space Grotesk',sans-serif;font-size:.875rem;font-weight:600;letter-spacing:.02em;}
+
+.badge{display:inline-block;padding:2px 7px;border-radius:4px;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;border:1px solid;}
+.badge-high{background:rgba(255,92,92,.12);border-color:#ff5c5c;color:#ff5c5c;}
+.badge-mod{background:rgba(255,185,85,.12);border-color:#ffb955;color:#ffb955;}
+.badge-lower{background:rgba(124,185,255,.12);border-color:#7cb9ff;color:#7cb9ff;}
+
+.road-critical{background:rgba(255,92,92,.15);color:#ff5c5c;border:1px solid rgba(255,92,92,.35);}
+.road-poor{background:rgba(255,185,85,.15);color:#ffb955;border:1px solid rgba(255,185,85,.35);}
+.road-fair{background:rgba(124,185,255,.15);color:#7cb9ff;border:1px solid rgba(124,185,255,.35);}
+.road-good{background:rgba(185,243,106,.15);color:#b9f36a;border:1px solid rgba(185,243,106,.35);}
+
+.score-bar{height:3px;border-radius:2px;background:linear-gradient(90deg,#9fd752,#b9f36a);}
+tr.data-row:hover{background:#1c2025;}
+tr.data-row{border-bottom:1px solid #1c2025;cursor:pointer;}
+td,th{padding:10px 12px;white-space:nowrap;}
+th{font-family:'Space Grotesk',sans-serif;font-size:.6875rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#c3c9b3;border-bottom:1px solid #262a30;background:#1c2025;}
+
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.6;transform:scale(1.2);}}
+.pulse{animation:pulse-dot 2s ease-in-out infinite;}
+.disclaimer-bar{background:#1c2025;border-bottom:1px solid #262a30;padding:6px 16px;display:flex;align-items:center;gap:8px;}
+.section-title{font-family:'Space Grotesk',sans-serif;font-size:.875rem;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:#e0e2ea;}
+.icon{font-family:'Material Symbols Outlined';font-variation-settings:'FILL' 0,'wght' 400;font-size:20px;display:inline-block;line-height:1;}
+.icon-fill{font-variation-settings:'FILL' 1,'wght' 400;}
+
+/* MAP STYLING */
+#city-map{height:100%;width:100%;background:#0b0d10;}
+.leaflet-popup-content-wrapper{
+  background:#171c22 !important;color:#e0e2ea !important;
+  border:1px solid #252c34 !important;border-radius:10px !important;
+  box-shadow:0 12px 32px rgba(0,0,0,.75) !important;padding:0 !important;
+}
+.leaflet-popup-content{margin:12px 14px !important;font-family:'Manrope',sans-serif !important;}
+.leaflet-popup-tip{background:#171c22 !important;}
+.leaflet-container a.leaflet-popup-close-button{color:#c3c9b3 !important;top:8px !important;right:8px !important;}
+
+/* Problem Navigator Card */
+.prob-card{
+  background:#181c21;border:1px solid #1c2025;border-radius:8px;
+  padding:12px;margin-bottom:8px;cursor:pointer;transition:all .15s;
+}
+.prob-card:hover{background:#1c2025;border-color:#262a30;}
+.prob-card.active{background:#262a30;border-color:#b9f36a;border-left:4px solid #b9f36a;}
+
+/* Floating Controls */
+.glass-panel{
+  background:rgba(23,28,34,.88);backdrop-filter:blur(10px);
+  border:1px solid #252c34;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5);
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div>
+    <!-- Brand -->
+    <div style="height:56px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;background:#181c21;border-bottom:1px solid #1c2025;">
+      <div style="display:flex;align-items:center;gap:10px;overflow:hidden;">
+        <div style="width:28px;height:28px;border-radius:8px;background:#b9f36a;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span class="icon icon-fill" style="font-size:16px;color:#203600;">my_location</span>
+        </div>
+        <div class="sidebar-brand-text">
+          <div class="sg" style="font-size:14px;font-weight:700;color:#b9f36a;letter-spacing:-.01em;line-height:1.2;">METRIX</div>
+          <div class="label-sm" style="color:#8d937f;font-size:9px;letter-spacing:.1em;">CIVIC OPS</div>
+        </div>
+      </div>
+      <!-- Close / Collapse Sidebar Button -->
+      <button onclick="toggleSidebar()" title="Toggle Sidebar (Collapse/Expand)" style="background:transparent;border:none;cursor:pointer;color:#c3c9b3;padding:4px;border-radius:6px;display:flex;align-items:center;" onmouseover="this.style.color='#b9f36a'" onmouseout="this.style.color='#c3c9b3'">
+        <span class="icon" id="sidebar-icon-inner" style="font-size:20px;">menu_open</span>
+      </button>
+    </div>
+
+    <!-- Navigation List -->
+    <nav style="padding:12px;">
+      <button class="nav-btn active" data-tab="overview" id="nav-overview" onclick="switchTab('overview')">
+        <span class="icon icon-fill" style="font-size:18px;">dashboard</span>
+        <span class="sidebar-text">Overview</span>
+      </button>
+
+      <!-- DEDICATED MAP FEATURE TAB -->
+      <button class="nav-btn" data-tab="map" id="nav-map" onclick="switchTab('map')">
+        <span class="icon icon-fill" style="font-size:18px;color:#ff5c5c;">map</span>
+        <span class="sidebar-text" style="color:#fefff2;">Priority Map</span>
+        <span class="sidebar-badge" style="margin-left:auto;font-size:10px;padding:2px 6px;border-radius:99px;background:rgba(255,92,92,.2);border:1px solid #ff5c5c;color:#ff5c5c;font-weight:700;">31 HOT</span>
+      </button>
+
+      <button class="nav-btn" data-tab="worklist" id="nav-worklist" onclick="switchTab('worklist')">
+        <span class="icon" style="font-size:18px;">format_list_numbered</span>
+        <span class="sidebar-text">Priority Worklist</span>
+        <span class="sidebar-badge" style="margin-left:auto;font-size:11px;padding:2px 7px;border-radius:99px;background:#1c2025;color:#c3c9b3;">31</span>
+      </button>
+
+      <button class="nav-btn" data-tab="zones" id="nav-zones" onclick="switchTab('zones')">
+        <span class="icon" style="font-size:18px;">equalizer</span>
+        <span class="sidebar-text">Zone Analysis</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Sidebar Footer -->
+  <div style="padding:12px;border-top:1px solid #1c2025;">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;background:#1c2025;margin-bottom:8px;">
+      <span class="pulse" style="width:8px;height:8px;border-radius:50%;background:#b9f36a;display:inline-block;flex-shrink:0;"></span>
+      <span class="label-sm sidebar-text" style="color:#c3c9b3;font-size:.625rem;">Synthetic Data · 2025</span>
+      <span class="sidebar-badge" style="margin-left:auto;font-size:9px;font-weight:700;color:#b9f36a;padding:1px 5px;border-radius:3px;background:#262a30;font-family:'Space Grotesk',sans-serif;">DEMO</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 4px;">
+      <div style="width:28px;height:28px;border-radius:50%;background:#262a30;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <span class="icon" style="font-size:14px;color:#c3c9b3;">person</span>
+      </div>
+      <div class="sidebar-footer-info">
+        <div class="label-md" style="color:#e0e2ea;">Lead Analyst</div>
+        <div class="label-sm" style="color:#8d937f;font-size:.6rem;letter-spacing:.04em;">civic-ops@demo.gov</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN CONTENT WRAPPER -->
+<div id="main-content">
+
+  <!-- TOPBAR -->
+  <header style="position:sticky;top:0;height:56px;background:rgba(16,20,25,.95);backdrop-filter:blur(8px);z-index:40;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-shadow:0 1px 6px rgba(0,0,0,.4);border-bottom:1px solid #1c2025;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <!-- Header sidebar collapse toggle button -->
+      <button onclick="toggleSidebar()" title="Toggle Sidebar" style="background:#181c21;border:1px solid #262a30;color:#c3c9b3;cursor:pointer;padding:6px;border-radius:6px;display:flex;align-items:center;justify-content:center;" onmouseover="this.style.color='#b9f36a';this.style.borderColor='#b9f36a'" onmouseout="this.style.color='#c3c9b3';this.style.borderColor='#262a30'">
+        <span class="icon" id="topbar-toggle-icon" style="font-size:18px;">menu</span>
+      </button>
+
+      <div style="position:relative;">
+        <span class="icon" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;color:#c3c9b3;pointer-events:none;">search</span>
+        <input id="search-input" type="text" placeholder="Search location (e.g. L0965)" style="background:#0a0f13;color:#e0e2ea;border:1px solid #1c2025;border-radius:8px;padding:6px 12px 6px 34px;font-family:'Manrope',sans-serif;font-size:.8125rem;outline:none;width:230px;" onfocus="this.style.borderColor='#b9f36a'" onblur="this.style.borderColor='#1c2025'"/>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:99px;background:#1c2025;font-size:.6875rem;font-weight:700;color:#c3c9b3;font-family:'Space Grotesk',sans-serif;letter-spacing:.04em;">
+        <span class="icon" style="font-size:13px;color:#ffb3af;">info</span>
+        Synthetic demo data · Simulated coordinates · Illustrative priorities only
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button onclick="switchTab('map')" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:rgba(255,92,92,.12);border:1px solid rgba(255,92,92,.3);color:#ff5c5c;font-size:.75rem;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;" onmouseover="this.style.background='rgba(255,92,92,.2)'" onmouseout="this.style.background='rgba(255,92,92,.12)'">
+        <span class="icon" style="font-size:15px;">explore</span>
+        <span>Open Map View</span>
+      </button>
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:#1c2025;font-size:.75rem;font-weight:600;color:#e0e2ea;font-family:'Space Grotesk',sans-serif;">
+        <span class="icon" style="font-size:15px;color:#c3c9b3;">speed</span>
+        <span style="color:#b9f36a;font-weight:700;">Score v1.0</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN PAGE CONTENT -->
+  <main style="flex:1;position:relative;">
+
+    <!-- ==================== TAB 1: OVERVIEW ==================== -->
+    <div class="tab-panel active" id="tab-overview" style="padding:20px;">
+      <!-- Page header -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+        <span class="pulse" style="width:8px;height:8px;border-radius:50%;background:#b9f36a;box-shadow:0 0 8px #b9f36a;display:inline-block;flex-shrink:0;"></span>
+        <span class="sg" style="font-size:1.1rem;font-weight:700;color:#fefff2;">Priority Operations Canvas</span>
+        <span style="color:#c3c9b3;font-size:.8125rem;"> | Metrix City Intelligence</span>
+        <span style="padding:2px 8px;border-radius:4px;background:#262a30;color:#b9f36a;font-family:'Space Grotesk',sans-serif;font-size:.6875rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Score v1.0</span>
+        <span style="margin-left:auto;font-size:.6875rem;font-weight:700;color:#c3c9b3;font-family:'Space Grotesk',sans-serif;letter-spacing:.04em;">1,000 locations · 10,000 incidents · 8,000 complaints</span>
+      </div>
+
+      <!-- KPI Grid -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <div class="kpi-card">
+          <div>
+            <div class="label-sm" style="color:#c3c9b3;margin-bottom:4px;">Locations Loaded</div>
+            <div class="metric-val" style="color:#e0e2ea;">1,000</div>
+            <div class="label-sm" style="color:#8d937f;font-size:.625rem;margin-top:4px;">20 zones · 5 road types</div>
+          </div>
+          <div style="width:40px;height:40px;border-radius:10px;background:#262a30;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span class="icon icon-fill" style="font-size:22px;color:#b9f36a;">pin_drop</span>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div>
+            <div class="label-sm" style="color:#c3c9b3;margin-bottom:4px;">Total Incidents</div>
+            <div class="metric-val" style="color:#e0e2ea;">10,000</div>
+            <div class="label-sm" style="color:#ffb3af;font-size:.625rem;margin-top:4px;">2,874 unresolved (28.7%)</div>
+          </div>
+          <div style="width:40px;height:40px;border-radius:10px;background:#262a30;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span class="icon" style="font-size:22px;color:#ffb3af;">emergency</span>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div>
+            <div class="label-sm" style="color:#c3c9b3;margin-bottom:4px;">Public Complaints</div>
+            <div class="metric-val" style="color:#e0e2ea;">8,000</div>
+            <div class="label-sm" style="color:#ffb955;font-size:.625rem;margin-top:4px;">3,438 active (43.0%)</div>
+          </div>
+          <div style="width:40px;height:40px;border-radius:10px;background:#262a30;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span class="icon" style="font-size:22px;color:#ffb955;">forum</span>
+          </div>
+        </div>
+        <div class="kpi-card" style="border-color:rgba(255,92,92,.3);cursor:pointer;" onclick="switchTab('map')">
+          <div>
+            <div class="label-sm" style="color:#ffb3af;margin-bottom:4px;">High-Priority Hotspots</div>
+            <div class="metric-val" style="color:#ff5c5c;">31</div>
+            <div class="label-sm" style="color:#b9f36a;font-size:.625rem;margin-top:4px;">Click to view on Map →</div>
+          </div>
+          <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,92,92,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <span class="icon icon-fill" style="font-size:22px;color:#ff5c5c;">map</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span class="section-title">Incident Severity</span>
+            <span class="label-sm" style="color:#8d937f;">10,000 total</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="label-sm" style="color:#c3c9b3;width:52px;text-align:right;flex-shrink:0;">CRITICAL</span>
+              <div style="flex:1;height:20px;background:#1c2025;border-radius:4px;overflow:hidden;">
+                <div style="width:4.7%;height:100%;background:#ff5c5c;border-radius:4px;"></div>
+              </div>
+              <span class="label-md" style="color:#e0e2ea;width:38px;text-align:right;flex-shrink:0;">470</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="label-sm" style="color:#c3c9b3;width:52px;text-align:right;flex-shrink:0;">HIGH</span>
+              <div style="flex:1;height:20px;background:#1c2025;border-radius:4px;overflow:hidden;">
+                <div style="width:19.85%;height:100%;background:#ffb955;border-radius:4px;"></div>
+              </div>
+              <span class="label-md" style="color:#e0e2ea;width:38px;text-align:right;flex-shrink:0;">1,985</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="label-sm" style="color:#c3c9b3;width:52px;text-align:right;flex-shrink:0;">MEDIUM</span>
+              <div style="flex:1;height:20px;background:#1c2025;border-radius:4px;overflow:hidden;">
+                <div style="width:37.26%;height:100%;background:#7cb9ff;border-radius:4px;"></div>
+              </div>
+              <span class="label-md" style="color:#e0e2ea;width:38px;text-align:right;flex-shrink:0;">3,726</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="label-sm" style="color:#c3c9b3;width:52px;text-align:right;flex-shrink:0;">LOW</span>
+              <div style="flex:1;height:20px;background:#1c2025;border-radius:4px;overflow:hidden;">
+                <div style="width:38.19%;height:100%;background:#8d937f;border-radius:4px;"></div>
+              </div>
+              <span class="label-md" style="color:#e0e2ea;width:38px;text-align:right;flex-shrink:0;">3,819</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span class="section-title">Road Conditions</span>
+            <span class="label-sm" style="color:#8d937f;">1,000 roads</span>
+          </div>
+          <div style="height:150px;position:relative;">
+            <canvas id="roadChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span class="section-title">Monthly Trajectory</span>
+            <span class="label-sm" style="color:#8d937f;">2025 Timeline</span>
+          </div>
+          <div style="height:150px;">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Priority Preview Table -->
+      <div class="table-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #1c2025;">
+          <span class="section-title">Top Priority Locations</span>
+          <div style="display:flex;gap:12px;">
+            <button onclick="switchTab('map')" style="background:none;border:none;cursor:pointer;color:#ff5c5c;font-family:'Space Grotesk',sans-serif;font-size:.75rem;font-weight:700;">View on Map →</button>
+            <button onclick="switchTab('worklist')" style="background:none;border:none;cursor:pointer;color:#b9f36a;font-family:'Space Grotesk',sans-serif;font-size:.75rem;font-weight:600;">View All 31 →</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th>#</th><th>Location ID</th><th>Score</th><th>Road</th><th>Incidents (Unres)</th><th>Injuries</th><th>Key Evidence</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="overview-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /tab-overview -->
+
+
+    <!-- ==================== TAB 2: DEDICATED PRIORITY MAP ==================== -->
+    <div class="tab-panel" id="tab-map" style="height:calc(100vh - 56px);position:relative;overflow:hidden;">
+      <div style="display:flex;height:100%;width:100%;">
+
+        <!-- Problem Navigator Sidebar (Left) -->
+        <div id="problem-navigator" style="width:360px;flex-shrink:0;height:100%;background:#101419;border-right:1px solid #1c2025;display:flex;flex-direction:column;z-index:20;">
+          
+          <!-- Navigator Header -->
+          <div style="padding:14px 16px;background:#181c21;border-bottom:1px solid #1c2025;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="pulse" style="width:8px;height:8px;border-radius:50%;background:#ff5c5c;box-shadow:0 0 8px #ff5c5c;display:inline-block;"></span>
+                <span class="sg" style="font-size:.9rem;font-weight:700;color:#fefff2;letter-spacing:.02em;">PROBLEM NAVIGATOR</span>
+              </div>
+              <span id="nav-counter" class="label-sm" style="color:#b9f36a;padding:2px 6px;border-radius:4px;background:#262a30;">31 Hotspots</span>
+            </div>
+            
+            <!-- Quick Search Input -->
+            <div style="position:relative;margin-bottom:8px;">
+              <span class="icon" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:16px;color:#8d937f;">search</span>
+              <input id="nav-search-input" type="text" placeholder="Filter problems (e.g. L0965, Critical)" style="width:100%;background:#0a0f13;border:1px solid #262a30;border-radius:6px;padding:6px 10px 6px 30px;color:#e0e2ea;font-size:.8rem;outline:none;" oninput="filterProblemCards()"/>
+            </div>
+
+            <!-- Filter Chips -->
+            <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;">
+              <button class="nav-filter-chip active" data-filter="all" onclick="setNavFilter('all', this)" style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:'Space Grotesk',sans-serif;background:#262a30;color:#b9f36a;border:1px solid #b9f36a;cursor:pointer;">All High (31)</button>
+              <button class="nav-filter-chip" data-filter="critical_road" onclick="setNavFilter('critical_road', this)" style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:'Space Grotesk',sans-serif;background:#181c21;color:#c3c9b3;border:1px solid #262a30;cursor:pointer;">Crit Road</button>
+              <button class="nav-filter-chip" data-filter="injuries" onclick="setNavFilter('injuries', this)" style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:'Space Grotesk',sans-serif;background:#181c21;color:#c3c9b3;border:1px solid #262a30;cursor:pointer;">Injuries &ge; 5</button>
+              <button class="nav-filter-chip" data-filter="unresolved" onclick="setNavFilter('unresolved', this)" style="padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:'Space Grotesk',sans-serif;background:#181c21;color:#c3c9b3;border:1px solid #262a30;cursor:pointer;">Unres &ge; 5</button>
+            </div>
+          </div>
+
+          <!-- Problem List Container -->
+          <div id="prob-list" style="flex:1;overflow-y:auto;padding:12px;">
+            <!-- Dynamically populated -->
+          </div>
+
+          <!-- Navigator Footer Info -->
+          <div style="padding:10px 14px;background:#181c21;border-top:1px solid #1c2025;display:flex;align-items:center;justify-content:space-between;">
+            <span class="label-sm" style="color:#8d937f;font-size:.65rem;">Click card to fly to map</span>
+            <button onclick="resetMapView()" style="background:none;border:none;color:#b9f36a;font-size:11px;font-family:'Space Grotesk',sans-serif;cursor:pointer;font-weight:600;">Reset Extent ↺</button>
+          </div>
+        </div>
+
+        <!-- Map Canvas (Right) -->
+        <div id="map-viewport" style="flex:1;height:100%;position:relative;background:#0a0f13;">
+          <div id="city-map"></div>
+
+          <!-- Floating Map Mode Controls (Top Left) -->
+          <div class="glass-panel" style="position:absolute;top:16px;left:16px;z-index:400;padding:8px 12px;display:flex;align-items:center;gap:8px;">
+            <button id="btn-mode-hotspots" onclick="setMapDisplayMode('hotspots')" style="padding:4px 10px;border-radius:6px;background:#262a30;border:1px solid #ff5c5c;color:#ff5c5c;font-size:11px;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;">
+              🔴 Hotspots (31)
+            </button>
+            <button id="btn-mode-city" onclick="setMapDisplayMode('city')" style="padding:4px 10px;border-radius:6px;background:transparent;border:1px solid #252c34;color:#c3c9b3;font-size:11px;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;">
+              🌐 Citywide Grid (1,000)
+            </button>
+            <span style="width:1px;height:18px;background:#252c34;margin:0 4px;"></span>
+            <span class="label-sm" style="color:#8d937f;font-size:.65rem;">Dark Matter Carto Tiles</span>
+          </div>
+
+          <!-- Floating Detail Inspector Card (Top Right) -->
+          <div id="floating-inspector" class="glass-panel" style="position:absolute;top:16px;right:16px;width:340px;z-index:400;display:none;padding:16px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span id="insp-id" class="sg" style="font-size:1.15rem;font-weight:700;color:#b9f36a;">L0965</span>
+                  <span id="insp-zone" class="label-sm" style="color:#c3c9b3;">ZONE_20</span>
+                </div>
+                <div id="insp-coords" class="label-sm" style="color:#8d937f;font-size:.625rem;">16.45837° N, 80.40460° E</div>
+              </div>
+              <button onclick="closeInspector()" style="background:none;border:none;color:#8d937f;cursor:pointer;padding:2px;" onmouseover="this.style.color='#fefff2'" onmouseout="this.style.color='#8d937f'">
+                <span class="icon" style="font-size:18px;">close</span>
+              </button>
+            </div>
+
+            <!-- Score Pill -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:#101419;border-radius:8px;border:1px solid #1c2025;margin-bottom:12px;">
+              <div>
+                <div class="label-sm" style="color:#8d937f;font-size:.6rem;">PRIORITY SCORE</div>
+                <div style="display:flex;align-items:baseline;gap:6px;">
+                  <span id="insp-score" class="metric-val" style="color:#ff5c5c;font-size:1.5rem;">78.7</span>
+                  <span id="insp-tier" class="badge badge-high">HIGH</span>
+                </div>
+              </div>
+              <div id="insp-road" class="badge road-critical" style="font-size:12px;">CRITICAL ROAD</div>
+            </div>
+
+            <!-- Component Scores Breakdown -->
+            <div style="margin-bottom:12px;">
+              <div class="label-sm" style="color:#8d937f;font-size:.625rem;margin-bottom:6px;">SCORE CONTRIBUTIONS (SUM=100)</div>
+              <div style="display:flex;flex-direction:column;gap:5px;font-size:11px;">
+                <div style="display:flex;justify-content:space-between;color:#c3c9b3;">
+                  <span>Incident Recurrence (20%)</span><strong id="insp-c-inc" style="color:#e0e2ea;">20.0</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;color:#c3c9b3;">
+                  <span>Safety Burden (25%)</span><strong id="insp-c-burden" style="color:#e0e2ea;">24.8</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;color:#c3c9b3;">
+                  <span>Unresolved Incidents (15%)</span><strong id="insp-c-unres" style="color:#e0e2ea;">12.5</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;color:#c3c9b3;">
+                  <span>Road Condition (10%)</span><strong id="insp-c-road" style="color:#e0e2ea;">10.0</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Operational Metrics -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+              <div style="padding:8px;background:#101419;border-radius:6px;border:1px solid #1c2025;">
+                <div class="label-sm" style="color:#8d937f;font-size:.6rem;">INCIDENTS</div>
+                <div id="insp-inc" class="sg" style="font-size:1rem;font-weight:700;color:#e0e2ea;">19</div>
+                <div id="insp-inj" class="label-sm" style="color:#ffb3af;font-size:.6rem;">12 injuries</div>
+              </div>
+              <div style="padding:8px;background:#101419;border-radius:6px;border:1px solid #1c2025;">
+                <div class="label-sm" style="color:#8d937f;font-size:.6rem;">BACKLOG</div>
+                <div id="insp-unres" class="sg" style="font-size:1rem;font-weight:700;color:#ffb3af;">2 unres</div>
+                <div id="insp-active" class="label-sm" style="color:#ffb955;font-size:.6rem;">7 complaints</div>
+              </div>
+            </div>
+
+            <!-- Recommended Next Step Intervention -->
+            <div style="padding:10px;background:rgba(185,243,106,.08);border:1px solid rgba(185,243,106,.25);border-radius:8px;margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <span class="icon" style="font-size:14px;color:#b9f36a;">build</span>
+                <span class="label-sm" style="color:#b9f36a;">RECOMMENDED INTERVENTION</span>
+              </div>
+              <div id="insp-rec" style="font-size:.75rem;color:#e0e2ea;line-height:1.35;">
+                Pavement milling & resurfacing; pedestrian traffic calming audit near school zone.
+              </div>
+            </div>
+
+            <button onclick="switchTab('worklist')" style="width:100%;padding:8px;background:#262a30;border:1px solid #252c34;border-radius:6px;color:#fefff2;font-family:'Space Grotesk',sans-serif;font-size:.75rem;font-weight:700;cursor:pointer;" onmouseover="this.style.background='#31353b'" onmouseout="this.style.background='#262a30'">
+              Inspect in Full Worklist Table →
+            </button>
+          </div>
+
+          <!-- Floating Bottom Disclaimer & Legend -->
+          <div class="glass-panel" style="position:absolute;bottom:16px;left:16px;z-index:400;padding:8px 14px;display:flex;align-items:center;gap:14px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="label-sm" style="color:#8d937f;font-size:.65rem;">PRIORITY TIERS:</span>
+              <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#ff5c5c;font-weight:700;"><span style="width:8px;height:8px;border-radius:50%;background:#ff5c5c;"></span>High (&ge;60)</span>
+              <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#ffb955;font-weight:700;"><span style="width:8px;height:8px;border-radius:50%;background:#ffb955;"></span>Mod (40–59)</span>
+              <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#7cb9ff;font-weight:700;"><span style="width:8px;height:8px;border-radius:50%;background:#7cb9ff;"></span>Lower (&lt;40)</span>
+            </div>
+            <span style="width:1px;height:14px;background:#252c34;"></span>
+            <div class="label-sm" style="color:#8d937f;font-size:.6rem;">
+              ⚠️ SIMULATED GEODATA · DEMO PURPOSES ONLY
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /tab-map -->
+
+
+    <!-- ==================== TAB 3: WORKLIST ==================== -->
+    <div class="tab-panel" id="tab-worklist" style="padding:20px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div class="sg" style="font-size:1.1rem;font-weight:700;color:#fefff2;">Priority Worklist</div>
+          <div class="label-sm" style="color:#8d937f;font-size:.625rem;margin-top:4px;">High-tier locations · Score ≥ 60 · Sorted by priority score desc · Heuristic Score v1.0</div>
+        </div>
+        <div class="label-sm" style="color:#c3c9b3;padding:8px 12px;background:#1c2025;border-radius:8px;">
+          Showing <span style="color:#b9f36a;font-weight:700;">31</span> locations · 428 Moderate · 541 Lower
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="disclaimer-bar">
+          <span class="icon" style="font-size:14px;color:#ffb3af;">info</span>
+          <span class="label-sm" style="color:#c3c9b3;font-size:.625rem;"><strong style="color:#e0e2ea;">Synthetic demo data:</strong> Scores are illustrative and not for real-world public-safety decisions. Score = 7-component weighted percentile rank v1.0.</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th>#</th><th>Location</th><th>Zone</th><th>Score</th><th>Road Cond.</th><th>Incidents</th><th>Unres.</th><th>Injuries</th><th>Active Comp.</th><th>Key Evidence</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="worklist-rows"></tbody>
+          </table>
+        </div>
+        <div style="padding:12px 16px;text-align:center;border-top:1px solid #1c2025;">
+          <span class="label-sm" style="color:#8d937f;">Top 31 High-tier locations shown · Score range: 60.0 – 78.7 · All scores are illustrative</span>
+        </div>
+      </div>
+    </div><!-- /tab-worklist -->
+
+
+    <!-- ==================== TAB 4: ZONES ==================== -->
+    <div class="tab-panel" id="tab-zones" style="padding:20px;">
+      <div style="margin-bottom:16px;">
+        <div class="sg" style="font-size:1.1rem;font-weight:700;color:#fefff2;">Zone Comparison</div>
+        <div class="label-sm" style="color:#8d937f;font-size:.625rem;margin-top:4px;">Per-location averages · Zones have 43–65 locations (unequal sizes — raw totals not fair for comparison)</div>
+      </div>
+      <div class="chart-card" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <span class="section-title">Avg Priority Score by Zone (Per-Location Average)</span>
+          <span class="label-sm" style="color:#8d937f;">Synthetic data · Score v1.0</span>
+        </div>
+        <div style="height:220px;"><canvas id="zoneChart"></canvas></div>
+      </div>
+      <div class="table-card">
+        <div class="disclaimer-bar">
+          <span class="icon" style="font-size:14px;color:#ffb3af;">info</span>
+          <span class="label-sm" style="color:#c3c9b3;font-size:.625rem;">Synthetic data · All values computed from CSV · Per-location averages shown · Zone size context included</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th>Zone</th><th>Locations</th><th>Avg Score</th><th>Avg Inc/Loc</th><th>Avg Unres/Loc</th><th>Poor+Crit Road %</th>
+              </tr>
+            </thead>
+            <tbody id="zone-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /tab-zones -->
+
+  </main>
+</div>
+
+<script>
+// ===== EMBEDDED REAL CSV DATA =====
+const TOP31 = [
+    {rank:1,location_id:"L0965",zone:"ZONE_20",road_condition:"Critical",road_type:"Collector",score:78.7,tier:"High",incident_count:19,unresolved:2,total_injuries:12,complaint_count:15,active_comp:10,crit_inc:1,high_inc:2,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.458373,longitude:80.404599,comp_inc:17.00,comp_burden:23.73,comp_unres:3.33,comp_comp:13.12,comp_active:10.00,comp_road:10.00,comp_exposure:1.51},
+    {rank:2,location_id:"L0362",zone:"ZONE_05",road_condition:"Poor",road_type:"Highway",score:73.5,tier:"High",incident_count:23,unresolved:6,total_injuries:7,complaint_count:9,active_comp:3,crit_inc:4,high_inc:4,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.440655,longitude:80.469736,comp_inc:20.00,comp_burden:25.00,comp_unres:10.00,comp_comp:7.50,comp_active:3.00,comp_road:7.00,comp_exposure:1.03},
+    {rank:3,location_id:"L0688",zone:"ZONE_09",road_condition:"Critical",road_type:"Arterial",score:70.8,tier:"High",incident_count:19,unresolved:7,total_injuries:3,complaint_count:6,active_comp:3,crit_inc:0,high_inc:7,near_school:1,near_hospital:0,pedestrian_activity:"High",latitude:16.339182,longitude:80.602586,comp_inc:17.00,comp_burden:20.76,comp_unres:11.67,comp_comp:4.69,comp_active:3.00,comp_road:10.00,comp_exposure:3.72},
+    {rank:4,location_id:"L0494",zone:"ZONE_14",road_condition:"Critical",road_type:"Residential",score:70.1,tier:"High",incident_count:14,unresolved:5,total_injuries:7,complaint_count:14,active_comp:8,crit_inc:0,high_inc:4,near_school:1,near_hospital:0,pedestrian_activity:"Medium",latitude:16.488536,longitude:80.444787,comp_inc:12.00,comp_burden:17.37,comp_unres:8.33,comp_comp:12.19,comp_active:8.00,comp_road:10.00,comp_exposure:2.17},
+    {rank:5,location_id:"L0729",zone:"ZONE_12",road_condition:"Poor",road_type:"Local",score:69.0,tier:"High",incident_count:17,unresolved:6,total_injuries:6,complaint_count:9,active_comp:2,crit_inc:3,high_inc:4,near_school:1,near_hospital:1,pedestrian_activity:"Low",latitude:16.431486,longitude:80.553953,comp_inc:15.00,comp_burden:24.15,comp_unres:10.00,comp_comp:7.50,comp_active:2.00,comp_road:7.00,comp_exposure:3.34},
+    {rank:6,location_id:"L0734",zone:"ZONE_18",road_condition:"Fair",road_type:"Collector",score:68.5,tier:"High",incident_count:20,unresolved:5,total_injuries:6,complaint_count:13,active_comp:5,crit_inc:0,high_inc:5,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.491018,longitude:80.466225,comp_inc:18.00,comp_burden:21.19,comp_unres:8.33,comp_comp:11.25,comp_active:5.00,comp_road:3.50,comp_exposure:1.19},
+    {rank:7,location_id:"L0624",zone:"ZONE_13",road_condition:"Good",road_type:"Collector",score:67.3,tier:"High",incident_count:17,unresolved:13,total_injuries:5,complaint_count:11,active_comp:6,crit_inc:0,high_inc:4,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.266095,longitude:80.454734,comp_inc:15.00,comp_burden:19.07,comp_unres:15.00,comp_comp:9.38,comp_active:6.00,comp_road:1.00,comp_exposure:1.83},
+    {rank:8,location_id:"L0556",zone:"ZONE_02",road_condition:"Critical",road_type:"Collector",score:65.7,tier:"High",incident_count:14,unresolved:5,total_injuries:7,complaint_count:9,active_comp:3,crit_inc:2,high_inc:3,near_school:0,near_hospital:1,pedestrian_activity:"High",latitude:16.433866,longitude:80.524170,comp_inc:12.00,comp_burden:21.19,comp_unres:8.33,comp_comp:7.50,comp_active:3.00,comp_road:10.00,comp_exposure:3.73},
+    {rank:9,location_id:"L0675",zone:"ZONE_19",road_condition:"Poor",road_type:"Collector",score:65.4,tier:"High",incident_count:16,unresolved:5,total_injuries:4,complaint_count:16,active_comp:6,crit_inc:0,high_inc:3,near_school:0,near_hospital:1,pedestrian_activity:"Medium",latitude:16.450368,longitude:80.316852,comp_inc:14.00,comp_burden:13.14,comp_unres:8.33,comp_comp:14.06,comp_active:6.00,comp_road:7.00,comp_exposure:2.89},
+    {rank:10,location_id:"L0048",zone:"ZONE_01",road_condition:"Poor",road_type:"Local",score:65.2,tier:"High",incident_count:16,unresolved:3,total_injuries:3,complaint_count:10,active_comp:7,crit_inc:2,high_inc:5,near_school:0,near_hospital:1,pedestrian_activity:"Medium",latitude:16.549446,longitude:80.501532,comp_inc:14.00,comp_burden:21.61,comp_unres:5.00,comp_comp:8.44,comp_active:7.00,comp_road:7.00,comp_exposure:2.16},
+    {rank:11,location_id:"L0506",zone:"ZONE_18",road_condition:"Poor",road_type:"Residential",score:64.0,tier:"High",incident_count:16,unresolved:7,total_injuries:5,complaint_count:7,active_comp:3,crit_inc:2,high_inc:4,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.406666,longitude:80.510585,comp_inc:14.00,comp_burden:21.61,comp_unres:11.67,comp_comp:5.62,comp_active:3.00,comp_road:7.00,comp_exposure:1.13},
+    {rank:12,location_id:"L0802",zone:"ZONE_14",road_condition:"Good",road_type:"Collector",score:63.8,tier:"High",incident_count:19,unresolved:3,total_injuries:4,complaint_count:10,active_comp:8,crit_inc:0,high_inc:4,near_school:1,near_hospital:1,pedestrian_activity:"High",latitude:16.426047,longitude:80.505640,comp_inc:17.00,comp_burden:19.49,comp_unres:5.00,comp_comp:8.44,comp_active:8.00,comp_road:1.00,comp_exposure:4.84},
+    {rank:13,location_id:"L0939",zone:"ZONE_01",road_condition:"Poor",road_type:"Residential",score:63.8,tier:"High",incident_count:16,unresolved:7,total_injuries:8,complaint_count:6,active_comp:3,crit_inc:1,high_inc:3,near_school:0,near_hospital:0,pedestrian_activity:"High",latitude:16.396252,longitude:80.453082,comp_inc:14.00,comp_burden:21.19,comp_unres:11.67,comp_comp:4.69,comp_active:3.00,comp_road:7.00,comp_exposure:2.29},
+    {rank:14,location_id:"L0181",zone:"ZONE_06",road_condition:"Critical",road_type:"Residential",score:63.3,tier:"High",incident_count:14,unresolved:7,total_injuries:6,complaint_count:10,active_comp:3,crit_inc:0,high_inc:3,near_school:0,near_hospital:1,pedestrian_activity:"Low",latitude:16.297647,longitude:80.575199,comp_inc:12.00,comp_burden:16.53,comp_unres:11.67,comp_comp:8.44,comp_active:3.00,comp_road:10.00,comp_exposure:1.69},
+    {rank:15,location_id:"L0294",zone:"ZONE_05",road_condition:"Poor",road_type:"Arterial",score:62.7,tier:"High",incident_count:13,unresolved:5,total_injuries:4,complaint_count:15,active_comp:7,crit_inc:0,high_inc:4,near_school:1,near_hospital:0,pedestrian_activity:"Medium",latitude:16.404407,longitude:80.579010,comp_inc:11.00,comp_burden:13.56,comp_unres:8.33,comp_comp:13.12,comp_active:7.00,comp_road:7.00,comp_exposure:2.71},
+    {rank:16,location_id:"L0521",zone:"ZONE_15",road_condition:"Fair",road_type:"Arterial",score:62.2,tier:"High",incident_count:21,unresolved:6,total_injuries:3,complaint_count:7,active_comp:2,crit_inc:1,high_inc:2,near_school:0,near_hospital:1,pedestrian_activity:"Low",latitude:16.622104,longitude:80.407137,comp_inc:19.00,comp_burden:19.49,comp_unres:10.00,comp_comp:5.62,comp_active:2.00,comp_road:3.50,comp_exposure:2.58},
+    {rank:17,location_id:"L0806",zone:"ZONE_10",road_condition:"Poor",road_type:"Collector",score:62.2,tier:"High",incident_count:15,unresolved:8,total_injuries:5,complaint_count:8,active_comp:2,crit_inc:2,high_inc:3,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.362260,longitude:80.563073,comp_inc:13.00,comp_burden:19.49,comp_unres:13.33,comp_comp:6.56,comp_active:2.00,comp_road:7.00,comp_exposure:0.83},
+    {rank:18,location_id:"L0642",zone:"ZONE_02",road_condition:"Fair",road_type:"Collector",score:62.0,tier:"High",incident_count:11,unresolved:6,total_injuries:5,complaint_count:14,active_comp:6,crit_inc:2,high_inc:2,near_school:1,near_hospital:1,pedestrian_activity:"High",latitude:16.345421,longitude:80.441564,comp_inc:9.00,comp_burden:16.53,comp_unres:10.00,comp_comp:12.19,comp_active:6.00,comp_road:3.50,comp_exposure:4.79},
+    {rank:19,location_id:"L0974",zone:"ZONE_05",road_condition:"Fair",road_type:"Collector",score:62.0,tier:"High",incident_count:17,unresolved:3,total_injuries:5,complaint_count:9,active_comp:5,crit_inc:4,high_inc:3,near_school:0,near_hospital:0,pedestrian_activity:"High",latitude:16.562195,longitude:80.482475,comp_inc:15.00,comp_burden:24.58,comp_unres:5.00,comp_comp:7.50,comp_active:5.00,comp_road:3.50,comp_exposure:1.42},
+    {rank:20,location_id:"L0493",zone:"ZONE_18",road_condition:"Fair",road_type:"Arterial",score:61.8,tier:"High",incident_count:16,unresolved:5,total_injuries:6,complaint_count:9,active_comp:5,crit_inc:1,high_inc:3,near_school:1,near_hospital:0,pedestrian_activity:"High",latitude:16.451725,longitude:80.343318,comp_inc:14.00,comp_burden:20.34,comp_unres:8.33,comp_comp:7.50,comp_active:5.00,comp_road:3.50,comp_exposure:3.16},
+    {rank:21,location_id:"L0463",zone:"ZONE_16",road_condition:"Poor",road_type:"Residential",score:61.5,tier:"High",incident_count:16,unresolved:5,total_injuries:6,complaint_count:6,active_comp:5,crit_inc:0,high_inc:6,near_school:0,near_hospital:0,pedestrian_activity:"Low",latitude:16.561796,longitude:80.425981,comp_inc:14.00,comp_burden:21.19,comp_unres:8.33,comp_comp:4.69,comp_active:5.00,comp_road:7.00,comp_exposure:1.32},
+    {rank:22,location_id:"L0132",zone:"ZONE_15",road_condition:"Poor",road_type:"Highway",score:61.4,tier:"High",incident_count:15,unresolved:6,total_injuries:7,complaint_count:8,active_comp:5,crit_inc:1,high_inc:2,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.523261,longitude:80.699400,comp_inc:13.00,comp_burden:18.22,comp_unres:10.00,comp_comp:6.56,comp_active:5.00,comp_road:7.00,comp_exposure:1.58},
+    {rank:23,location_id:"L0140",zone:"ZONE_02",road_condition:"Poor",road_type:"Arterial",score:61.3,tier:"High",incident_count:14,unresolved:6,total_injuries:7,complaint_count:9,active_comp:1,crit_inc:4,high_inc:0,near_school:0,near_hospital:0,pedestrian_activity:"High",latitude:16.404404,longitude:80.373912,comp_inc:12.00,comp_burden:22.03,comp_unres:10.00,comp_comp:7.50,comp_active:1.00,comp_road:7.00,comp_exposure:1.80},
+    {rank:24,location_id:"L0163",zone:"ZONE_16",road_condition:"Poor",road_type:"Local",score:61.1,tier:"High",incident_count:14,unresolved:6,total_injuries:6,complaint_count:9,active_comp:6,crit_inc:1,high_inc:3,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.479291,longitude:80.565195,comp_inc:12.00,comp_burden:17.37,comp_unres:10.00,comp_comp:7.50,comp_active:6.00,comp_road:7.00,comp_exposure:1.22},
+    {rank:25,location_id:"L0659",zone:"ZONE_19",road_condition:"Good",road_type:"Local",score:61.1,tier:"High",incident_count:15,unresolved:4,total_injuries:7,complaint_count:10,active_comp:6,crit_inc:1,high_inc:7,near_school:1,near_hospital:0,pedestrian_activity:"Medium",latitude:16.452384,longitude:80.431793,comp_inc:13.00,comp_burden:22.88,comp_unres:6.67,comp_comp:8.44,comp_active:6.00,comp_road:1.00,comp_exposure:3.07},
+    {rank:26,location_id:"L0982",zone:"ZONE_10",road_condition:"Fair",road_type:"Local",score:61.1,tier:"High",incident_count:16,unresolved:5,total_injuries:7,complaint_count:10,active_comp:5,crit_inc:2,high_inc:2,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.415720,longitude:80.399917,comp_inc:14.00,comp_burden:20.76,comp_unres:8.33,comp_comp:8.44,comp_active:5.00,comp_road:3.50,comp_exposure:1.09},
+    {rank:27,location_id:"L0757",zone:"ZONE_06",road_condition:"Poor",road_type:"Arterial",score:60.9,tier:"High",incident_count:11,unresolved:3,total_injuries:6,complaint_count:13,active_comp:10,crit_inc:0,high_inc:6,near_school:0,near_hospital:1,pedestrian_activity:"Medium",latitude:16.525894,longitude:80.486820,comp_inc:9.00,comp_burden:16.53,comp_unres:5.00,comp_comp:11.25,comp_active:10.00,comp_road:7.00,comp_exposure:2.14},
+    {rank:28,location_id:"L0332",zone:"ZONE_10",road_condition:"Poor",road_type:"Local",score:60.6,tier:"High",incident_count:14,unresolved:5,total_injuries:4,complaint_count:11,active_comp:7,crit_inc:1,high_inc:2,near_school:0,near_hospital:0,pedestrian_activity:"High",latitude:16.314654,longitude:80.448253,comp_inc:12.00,comp_burden:14.41,comp_unres:8.33,comp_comp:9.38,comp_active:7.00,comp_road:7.00,comp_exposure:2.50},
+    {rank:29,location_id:"L0073",zone:"ZONE_10",road_condition:"Critical",road_type:"Local",score:60.5,tier:"High",incident_count:12,unresolved:5,total_injuries:3,complaint_count:14,active_comp:5,crit_inc:0,high_inc:4,near_school:0,near_hospital:0,pedestrian_activity:"High",latitude:16.550910,longitude:80.383422,comp_inc:10.00,comp_burden:13.14,comp_unres:8.33,comp_comp:12.19,comp_active:5.00,comp_road:10.00,comp_exposure:1.89},
+    {rank:30,location_id:"L0358",zone:"ZONE_07",road_condition:"Poor",road_type:"Collector",score:60.2,tier:"High",incident_count:19,unresolved:6,total_injuries:3,complaint_count:5,active_comp:3,crit_inc:0,high_inc:2,near_school:1,near_hospital:1,pedestrian_activity:"Medium",latitude:16.420528,longitude:80.478339,comp_inc:17.00,comp_burden:15.25,comp_unres:10.00,comp_comp:3.75,comp_active:3.00,comp_road:7.00,comp_exposure:4.17},
+    {rank:31,location_id:"L0604",zone:"ZONE_02",road_condition:"Fair",road_type:"Collector",score:60.1,tier:"High",incident_count:17,unresolved:7,total_injuries:4,complaint_count:10,active_comp:5,crit_inc:0,high_inc:3,near_school:0,near_hospital:0,pedestrian_activity:"Medium",latitude:16.503224,longitude:80.448323,comp_inc:15.00,comp_burden:14.83,comp_unres:11.67,comp_comp:8.44,comp_active:5.00,comp_road:3.50,comp_exposure:1.70}
+];
+
+const ALL_LOCS = [["L0965", 16.45837, 80.4046, 78.7, "High", "Critical", 19, 2, 12, 10, "ZONE_20", 1], ["L0362", 16.44065, 80.46974, 73.5, "High", "Poor", 23, 6, 7, 3, "ZONE_05", 2], ["L0688", 16.33918, 80.60259, 70.8, "High", "Critical", 19, 7, 3, 3, "ZONE_09", 3], ["L0494", 16.48854, 80.44479, 70.1, "High", "Critical", 14, 5, 7, 8, "ZONE_14", 4], ["L0729", 16.43149, 80.55395, 69.0, "High", "Poor", 17, 6, 6, 2, "ZONE_12", 5], ["L0734", 16.49102, 80.46622, 68.5, "High", "Fair", 20, 5, 6, 5, "ZONE_18", 6], ["L0624", 16.26609, 80.45473, 67.3, "High", "Good", 17, 13, 5, 6, "ZONE_13", 7], ["L0556", 16.43387, 80.52417, 65.7, "High", "Critical", 14, 5, 7, 3, "ZONE_02", 8], ["L0675", 16.45037, 80.31685, 65.4, "High", "Poor", 16, 5, 4, 6, "ZONE_19", 9], ["L0048", 16.54945, 80.50153, 65.2, "High", "Poor", 16, 3, 3, 7, "ZONE_01", 10], ["L0506", 16.40667, 80.51059, 64.0, "High", "Poor", 16, 7, 5, 3, "ZONE_18", 11], ["L0802", 16.42605, 80.50564, 63.8, "High", "Good", 19, 3, 4, 8, "ZONE_14", 12], ["L0939", 16.39625, 80.45308, 63.8, "High", "Poor", 16, 7, 8, 3, "ZONE_01", 13], ["L0181", 16.29765, 80.5752, 63.3, "High", "Critical", 14, 7, 6, 3, "ZONE_06", 14], ["L0294", 16.40441, 80.57901, 62.7, "High", "Poor", 13, 5, 4, 7, "ZONE_05", 15], ["L0521", 16.6221, 80.40714, 62.2, "High", "Fair", 21, 6, 3, 2, "ZONE_15", 16], ["L0806", 16.36226, 80.56307, 62.2, "High", "Poor", 15, 8, 5, 2, "ZONE_10", 17], ["L0642", 16.34542, 80.44156, 62.0, "High", "Fair", 11, 6, 5, 6, "ZONE_02", 18], ["L0974", 16.56219, 80.48247, 62.0, "High", "Fair", 17, 3, 5, 5, "ZONE_05", 19], ["L0493", 16.45172, 80.34332, 61.8, "High", "Fair", 16, 5, 6, 5, "ZONE_18", 20], ["L0463", 16.5618, 80.42598, 61.5, "High", "Poor", 16, 5, 6, 5, "ZONE_16", 21], ["L0132", 16.52326, 80.6994, 61.4, "High", "Poor", 15, 6, 7, 5, "ZONE_15", 22], ["L0140", 16.4044, 80.37391, 61.3, "High", "Poor", 14, 6, 7, 1, "ZONE_02", 23], ["L0163", 16.47929, 80.5652, 61.1, "High", "Poor", 14, 6, 6, 6, "ZONE_16", 24], ["L0659", 16.45238, 80.43179, 61.1, "High", "Good", 15, 4, 7, 6, "ZONE_19", 25], ["L0982", 16.41572, 80.39992, 61.1, "High", "Fair", 16, 5, 7, 5, "ZONE_10", 26], ["L0757", 16.52589, 80.48682, 60.9, "High", "Poor", 11, 3, 6, 10, "ZONE_06", 27], ["L0332", 16.31465, 80.44825, 60.6, "High", "Poor", 14, 5, 4, 7, "ZONE_10", 28], ["L0073", 16.55091, 80.38342, 60.5, "High", "Critical", 12, 5, 3, 5, "ZONE_10", 29], ["L0358", 16.42053, 80.47834, 60.2, "High", "Poor", 19, 6, 3, 3, "ZONE_07", 30], ["L0604", 16.50322, 80.44832, 60.1, "High", "Fair", 17, 7, 4, 5, "ZONE_02", 31], ["L0272", 16.36965, 80.42322, 59.7, "Moderate", "Critical", 13, 7, 7, 2, "ZONE_06", 32], ["L0706", 16.42873, 80.45745, 59.4, "Moderate", "Critical", 16, 4, 6, 3, "ZONE_01", 33], ["L0884", 16.35235, 80.57205, 59.4, "Moderate", "Poor", 11, 3, 1, 7, "ZONE_04", 34], ["L0368", 16.49283, 80.40512, 59.2, "Moderate", "Good", 13, 5, 8, 5, "ZONE_07", 35], ["L0024", 16.41517, 80.62205, 59.1, "Moderate", "Poor", 14, 4, 6, 6, "ZONE_10", 36], ["L0425", 16.59301, 80.64703, 59.1, "Moderate", "Fair", 16, 4, 4, 5, "ZONE_03", 37], ["L0419", 16.43097, 80.58352, 59.0, "Moderate", "Fair", 13, 6, 2, 8, "ZONE_14", 38], ["L0952", 16.52521, 80.55397, 58.7, "Moderate", "Fair", 18, 7, 6, 0, "ZONE_08", 39], ["L0829", 16.38288, 80.53849, 58.3, "Moderate", "Poor", 15, 4, 3, 5, "ZONE_05", 40], ["L0606", 16.31919, 80.3362, 58.2, "Moderate", "Poor", 11, 3, 5, 9, "ZONE_03", 41], ["L0838", 16.28818, 80.31429, 58.2, "Moderate", "Fair", 18, 6, 3, 2, "ZONE_05", 42], ["L0473", 16.38638, 80.41886, 58.1, "Moderate", "Poor", 16, 6, 2, 3, "ZONE_07", 43], ["L0160", 16.40208, 80.41884, 57.7, "Moderate", "Poor", 15, 4, 4, 5, "ZONE_17", 44], ["L0284", 16.50532, 80.54072, 57.3, "Moderate", "Poor", 11, 5, 6, 5, "ZONE_04", 45], ["L0324", 16.35209, 80.44487, 57.3, "Moderate", "Poor", 14, 6, 3, 6, "ZONE_15", 46], ["L0487", 16.46946, 80.4307, 56.9, "Moderate", "Critical", 13, 3, 2, 6, "ZONE_09", 47], ["L0826", 16.31809, 80.3921, 56.9, "Moderate", "Critical", 11, 4, 8, 3, "ZONE_05", 48], ["L0312", 16.36117, 80.45391, 56.8, "Moderate", "Poor", 15, 3, 6, 3, "ZONE_04", 49], ["L0565", 16.44216, 80.63476, 56.8, "Moderate", "Poor", 12, 6, 4, 2, "ZONE_09", 50], ["L0861", 16.44115, 80.57546, 56.8, "Moderate", "Fair", 15, 4, 4, 7, "ZONE_13", 51], ["L0790", 16.34807, 80.52854, 56.7, "Moderate", "Fair", 15, 4, 11, 2, "ZONE_16", 52], ["L0955", 16.41968, 80.58134, 56.6, "Moderate", "Fair", 16, 4, 13, 1, "ZONE_17", 53], ["L0219", 16.48937, 80.58343, 56.5, "Moderate", "Good", 16, 6, 2, 6, "ZONE_10", 54], ["L0243", 16.55051, 80.47012, 56.5, "Moderate", "Fair", 12, 4, 6, 6, "ZONE_01", 55], ["L0906", 16.34994, 80.42326, 56.5, "Moderate", "Poor", 15, 7, 8, 1, "ZONE_17", 56], ["L0916", 16.44311, 80.48403, 56.3, "Moderate", "Critical", 15, 2, 5, 3, "ZONE_06", 57], ["L0122", 16.52148, 80.44126, 55.9, "Moderate", "Poor", 11, 4, 1, 4, "ZONE_15", 58], ["L0359", 16.37046, 80.44532, 55.9, "Moderate", "Good", 15, 8, 2, 3, "ZONE_16", 59], ["L0647", 16.45526, 80.43654, 55.9, "Moderate", "Poor", 15, 3, 2, 4, "ZONE_15", 60], ["L0903", 16.40255, 80.45312, 55.9, "Moderate", "Fair", 13, 5, 5, 1, "ZONE_12", 61], ["L0986", 16.45615, 80.57287, 55.9, "Moderate", "Poor", 13, 7, 7, 3, "ZONE_20", 62], ["L0086", 16.33654, 80.38586, 55.8, "Moderate", "Good", 16, 7, 1, 1, "ZONE_16", 63], ["L0192", 16.37301, 80.54839, 55.8, "Moderate", "Critical", 13, 6, 6, 2, "ZONE_18", 64], ["L0326", 16.43311, 80.5881, 55.8, "Moderate", "Fair", 17, 3, 1, 6, "ZONE_05", 65], ["L0489", 16.496, 80.48529, 55.6, "Moderate", "Fair", 15, 4, 5, 5, "ZONE_13", 66], ["L0157", 16.53419, 80.59826, 55.5, "Moderate", "Good", 14, 5, 5, 6, "ZONE_17", 67], ["L0514", 16.47653, 80.46649, 55.5, "Moderate", "Good", 15, 6, 5, 7, "ZONE_16", 68], ["L0995", 16.40218, 80.44692, 55.5, "Moderate", "Poor", 13, 6, 6, 6, "ZONE_12", 69], ["L0724", 16.36557, 80.5063, 55.3, "Moderate", "Poor", 13, 6, 2, 3, "ZONE_13", 70], ["L0250", 16.43302, 80.46491, 55.1, "Moderate", "Fair", 17, 5, 3, 2, "ZONE_13", 71], ["L0443", 16.47573, 80.51172, 55.0, "Moderate", "Poor", 10, 3, 3, 7, "ZONE_09", 72], ["L0608", 16.40906, 80.55061, 54.8, "Moderate", "Good", 11, 5, 4, 6, "ZONE_05", 73], ["L0966", 16.49088, 80.50132, 54.8, "Moderate", "Fair", 13, 5, 6, 6, "ZONE_15", 74], ["L0398", 16.43903, 80.45863, 54.7, "Moderate", "Poor", 15, 4, 4, 4, "ZONE_03", 75], ["L0061", 16.28838, 80.81863, 54.6, "Moderate", "Poor", 17, 6, 2, 0, "ZONE_15", 76], ["L0072", 16.50489, 80.64333, 54.6, "Moderate", "Critical", 13, 6, 1, 1, "ZONE_13", 77], ["L0967", 16.42153, 80.61214, 54.6, "Moderate", "Poor", 17, 4, 4, 1, "ZONE_05", 78], ["L0237", 16.49558, 80.50648, 54.5, "Moderate", "Poor", 16, 3, 6, 5, "ZONE_09", 79], ["L0690", 16.41617, 80.73057, 54.4, "Moderate", "Poor", 14, 3, 3, 6, "ZONE_03", 80], ["L0207", 16.52754, 80.47494, 54.3, "Moderate", "Fair", 14, 5, 5, 4, "ZONE_17", 81], ["L0221", 16.43678, 80.512, 54.2, "Moderate", "Fair", 17, 2, 4, 4, "ZONE_05", 82], ["L0957", 16.54089, 80.54559, 53.9, "Moderate", "Fair", 17, 4, 6, 5, "ZONE_04", 83], ["L0859", 16.34807, 80.54721, 53.8, "Moderate", "Critical", 12, 5, 4, 5, "ZONE_08", 84], ["L0212", 16.4766, 80.55646, 53.7, "Moderate", "Poor", 16, 4, 3, 4, "ZONE_06", 85], ["L0249", 16.41811, 80.44546, 53.7, "Moderate", "Poor", 15, 7, 3, 4, "ZONE_19", 86], ["L0081", 16.39312, 80.68287, 53.6, "Moderate", "Good", 15, 5, 3, 6, "ZONE_15", 87], ["L0424", 16.34162, 80.48965, 53.6, "Moderate", "Poor", 13, 4, 6, 4, "ZONE_09", 88], ["L0248", 16.29699, 80.60243, 53.5, "Moderate", "Good", 17, 5, 3, 1, "ZONE_16", 89], ["L0914", 16.42693, 80.5801, 53.5, "Moderate", "Fair", 17, 3, 3, 5, "ZONE_16", 90], ["L0879", 16.43402, 80.4762, 53.4, "Moderate", "Poor", 13, 6, 5, 6, "ZONE_03", 91], ["L0046", 16.35473, 80.70949, 53.3, "Moderate", "Critical", 12, 6, 2, 3, "ZONE_19", 92], ["L0186", 16.57848, 80.62936, 53.2, "Moderate", "Fair", 14, 5, 2, 7, "ZONE_07", 93], ["L0740", 16.39908, 80.44155, 53.1, "Moderate", "Fair", 15, 4, 6, 3, "ZONE_04", 94], ["L0774", 16.3758, 80.6434, 53.1, "Moderate", "Poor", 11, 5, 3, 5, "ZONE_14", 95], ["L0795", 16.43375, 80.54461, 53.1, "Moderate", "Good", 18, 2, 8, 3, "ZONE_10", 96], ["L0578", 16.44856, 80.61316, 52.9, "Moderate", "Poor", 14, 5, 6, 2, "ZONE_19", 97], ["L0143", 16.51477, 80.58729, 52.8, "Moderate", "Critical", 14, 6, 2, 2, "ZONE_09", 98], ["L0300", 16.42329, 80.56168, 52.8, "Moderate", "Fair", 10, 5, 2, 7, "ZONE_04", 99], ["L0611", 16.51976, 80.49713, 52.8, "Moderate", "Poor", 14, 4, 3, 4, "ZONE_16", 100], ["L0619", 16.44614, 80.43781, 52.8, "Moderate", "Fair", 15, 5, 3, 5, "ZONE_20", 101], ["L0112", 16.49728, 80.37888, 52.7, "Moderate", "Fair", 16, 6, 0, 5, "ZONE_02", 102], ["L0316", 16.51951, 80.65725, 52.7, "Moderate", "Critical", 9, 6, 3, 4, "ZONE_02", 103], ["L0525", 16.57316, 80.62387, 52.7, "Moderate", "Poor", 14, 4, 4, 3, "ZONE_06", 104], ["L0563", 16.5058, 80.44998, 52.7, "Moderate", "Critical", 15, 4, 2, 3, "ZONE_12", 105], ["L0586", 16.37616, 80.50224, 52.6, "Moderate", "Fair", 10, 4, 2, 6, "ZONE_18", 106], ["L0403", 16.4187, 80.46484, 52.5, "Moderate", "Poor", 12, 6, 2, 1, "ZONE_20", 107], ["L0737", 16.48022, 80.46756, 52.5, "Moderate", "Good", 14, 4, 5, 6, "ZONE_01", 108], ["L0543", 16.4982, 80.47356, 52.4, "Moderate", "Critical", 10, 2, 4, 6, "ZONE_12", 109], ["L0365", 16.47026, 80.56638, 52.3, "Moderate", "Fair", 17, 5, 3, 3, "ZONE_14", 110], ["L0390", 16.28569, 80.50905, 52.3, "Moderate", "Critical", 12, 4, 1, 4, "ZONE_04", 111], ["L0527", 16.52081, 80.44504, 52.3, "Moderate", "Fair", 17, 5, 3, 1, "ZONE_01", 112], ["L0306", 16.28306, 80.56096, 52.2, "Moderate", "Good", 15, 7, 1, 3, "ZONE_14", 113], ["L0980", 16.32065, 80.37235, 52.2, "Moderate", "Good", 12, 3, 4, 4, "ZONE_18", 114], ["L0996", 16.49435, 80.47474, 52.2, "Moderate", "Good", 14, 6, 8, 3, "ZONE_01", 115], ["L0270", 16.4811, 80.45652, 52.1, "Moderate", "Fair", 17, 3, 6, 1, "ZONE_08", 116], ["L0298", 16.43438, 80.37709, 52.1, "Moderate", "Critical", 11, 2, 2, 4, "ZONE_03", 117], ["L0954", 16.4718, 80.54896, 52.1, "Moderate", "Poor", 12, 3, 5, 7, "ZONE_06", 118], ["L0686", 16.51416, 80.37234, 52.0, "Moderate", "Critical", 9, 4, 4, 8, "ZONE_06", 119], ["L0760", 16.47769, 80.46831, 52.0, "Moderate", "Critical", 12, 5, 2, 2, "ZONE_01", 120], ["L0741", 16.41922, 80.56433, 51.9, "Moderate", "Poor", 13, 6, 2, 3, "ZONE_16", 121], ["L0209", 16.36575, 80.32154, 51.7, "Moderate", "Poor", 12, 6, 3, 3, "ZONE_02", 122], ["L0308", 16.4516, 80.4962, 51.7, "Moderate", "Good", 15, 5, 2, 7, "ZONE_05", 123], ["L0460", 16.38849, 80.52147, 51.6, "Moderate", "Fair", 14, 2, 4, 6, "ZONE_16", 124], ["L0678", 16.43805, 80.4213, 51.6, "Moderate", "Poor", 15, 3, 1, 1, "ZONE_14", 125], ["L0218", 16.40822, 80.57689, 51.5, "Moderate", "Poor", 9, 5, 4, 6, "ZONE_03", 126], ["L0289", 16.32039, 80.40992, 51.5, "Moderate", "Fair", 13, 5, 6, 4, "ZONE_17", 127], ["L0389", 16.56218, 80.50677, 51.5, "Moderate", "Good", 14, 3, 5, 5, "ZONE_18", 128], ["L0054", 16.60185, 80.52141, 51.4, "Moderate", "Poor", 14, 5, 3, 2, "ZONE_13", 129], ["L0413", 16.40231, 80.33036, 51.3, "Moderate", "Poor", 14, 4, 2, 2, "ZONE_17", 130], ["L0855", 16.54465, 80.63997, 51.3, "Moderate", "Poor", 12, 2, 3, 7, "ZONE_11", 131], ["L0504", 16.48492, 80.45213, 51.2, "Moderate", "Poor", 16, 6, 2, 1, "ZONE_18", 132], ["L0883", 16.42971, 80.47657, 51.2, "Moderate", "Fair", 17, 3, 4, 4, "ZONE_13", 133], ["L0935", 16.48294, 80.6123, 51.1, "Moderate", "Poor", 12, 4, 3, 4, "ZONE_03", 134], ["L0343", 16.54193, 80.52483, 50.9, "Moderate", "Critical", 14, 3, 4, 2, "ZONE_10", 135], ["L0756", 16.52572, 80.55815, 50.9, "Moderate", "Fair", 12, 5, 6, 5, "ZONE_08", 136], ["L0928", 16.44309, 80.58358, 50.8, "Moderate", "Critical", 13, 4, 1, 5, "ZONE_09", 137], ["L0085", 16.36209, 80.45848, 50.7, "Moderate", "Poor", 15, 2, 8, 2, "ZONE_08", 138], ["L0226", 16.51659, 80.49786, 50.6, "Moderate", "Fair", 15, 3, 1, 5, "ZONE_20", 139], ["L0354", 16.55012, 80.5148, 50.6, "Moderate", "Critical", 10, 4, 3, 5, "ZONE_20", 140], ["L0581", 16.42858, 80.61696, 50.4, "Moderate", "Fair", 11, 3, 3, 8, "ZONE_13", 141], ["L0685", 16.4953, 80.66616, 50.4, "Moderate", "Poor", 13, 2, 4, 4, "ZONE_17", 142], ["L0151", 16.55658, 80.55057, 50.3, "Moderate", "Fair", 11, 6, 1, 6, "ZONE_02", 143], ["L0247", 16.31121, 80.38565, 50.3, "Moderate", "Poor", 13, 3, 5, 2, "ZONE_19", 144], ["L0442", 16.4729, 80.52153, 50.3, "Moderate", "Poor", 13, 2, 4, 4, "ZONE_11", 145], ["L0878", 16.43868, 80.40279, 50.3, "Moderate", "Poor", 15, 4, 4, 1, "ZONE_13", 146], ["L0309", 16.40104, 80.62694, 50.1, "Moderate", "Poor", 12, 1, 3, 7, "ZONE_14", 147], ["L0877", 16.44947, 80.5484, 50.1, "Moderate", "Good", 11, 5, 2, 6, "ZONE_20", 148], ["L0109", 16.42785, 80.46663, 50.0, "Moderate", "Critical", 13, 6, 2, 4, "ZONE_08", 149], ["L0147", 16.56556, 80.52782, 50.0, "Moderate", "Fair", 11, 6, 5, 4, "ZONE_09", 150], ["L0162", 16.63137, 80.62621, 50.0, "Moderate", "Fair", 11, 5, 3, 4, "ZONE_19", 151], ["L0253", 16.51767, 80.45711, 50.0, "Moderate", "Poor", 10, 4, 4, 3, "ZONE_18", 152], ["L0885", 16.32046, 80.4839, 50.0, "Moderate", "Poor", 14, 5, 1, 2, "ZONE_11", 153], ["L0999", 16.44061, 80.40262, 50.0, "Moderate", "Fair", 12, 6, 5, 5, "ZONE_07", 154], ["L0156", 16.39064, 80.47659, 49.9, "Moderate", "Good", 14, 5, 6, 5, "ZONE_03", 155], ["L0011", 16.37052, 80.57552, 49.8, "Moderate", "Poor", 8, 4, 4, 3, "ZONE_16", 156], ["L0208", 16.43462, 80.57552, 49.7, "Moderate", "Critical", 13, 3, 3, 3, "ZONE_05", 157], ["L0436", 16.33319, 80.59361, 49.7, "Moderate", "Critical", 14, 4, 0, 3, "ZONE_02", 158], ["L0703", 16.46799, 80.50146, 49.7, "Moderate", "Fair", 14, 7, 1, 2, "ZONE_14", 159], ["L0484", 16.39768, 80.32835, 49.6, "Moderate", "Critical", 12, 4, 8, 1, "ZONE_18", 160], ["L0499", 16.4012, 80.48483, 49.6, "Moderate", "Poor", 13, 2, 6, 5, "ZONE_05", 161], ["L0534", 16.48288, 80.41045, 49.6, "Moderate", "Poor", 14, 4, 3, 1, "ZONE_16", 162], ["L0003", 16.62755, 80.4409, 49.5, "Moderate", "Poor", 13, 4, 1, 2, "ZONE_17", 163], ["L0924", 16.4027, 80.36343, 49.5, "Moderate", "Good", 18, 5, 1, 2, "ZONE_04", 164], ["L0164", 16.47491, 80.46078, 49.4, "Moderate", "Fair", 14, 4, 4, 4, "ZONE_03", 165], ["L0509", 16.40484, 80.49296, 49.4, "Moderate", "Poor", 13, 5, 1, 4, "ZONE_15", 166], ["L1000", 16.53059, 80.5046, 49.4, "Moderate", "Fair", 10, 4, 3, 5, "ZONE_18", 167], ["L0477", 16.32915, 80.38566, 49.3, "Moderate", "Poor", 16, 3, 3, 1, "ZONE_13", 168], ["L0712", 16.48537, 80.42106, 49.3, "Moderate", "Critical", 11, 3, 4, 3, "ZONE_04", 169], ["L0034", 16.40953, 80.54547, 49.2, "Moderate", "Poor", 10, 4, 2, 6, "ZONE_19", 170], ["L0421", 16.34486, 80.56802, 49.0, "Moderate", "Fair", 11, 5, 2, 5, "ZONE_10", 171], ["L0205", 16.46083, 80.50672, 48.9, "Moderate", "Fair", 15, 3, 6, 2, "ZONE_08", 172], ["L0804", 16.40788, 80.62709, 48.9, "Moderate", "Poor", 14, 3, 2, 3, "ZONE_09", 173], ["L0174", 16.43001, 80.4462, 48.8, "Moderate", "Poor", 14, 3, 3, 5, "ZONE_11", 174], ["L0315", 16.54528, 80.53786, 48.8, "Moderate", "Poor", 12, 1, 4, 5, "ZONE_19", 175], ["L0471", 16.33122, 80.35019, 48.8, "Moderate", "Poor", 10, 3, 1, 8, "ZONE_16", 176], ["L0190", 16.37554, 80.43601, 48.7, "Moderate", "Good", 15, 4, 4, 5, "ZONE_18", 177], ["L0785", 16.46002, 80.40507, 48.7, "Moderate", "Fair", 9, 6, 3, 7, "ZONE_11", 178], ["L0038", 16.49408, 80.54198, 48.6, "Moderate", "Fair", 12, 4, 6, 3, "ZONE_08", 179], ["L0770", 16.41514, 80.43539, 48.6, "Moderate", "Fair", 10, 3, 4, 6, "ZONE_01", 180], ["L0242", 16.44299, 80.47946, 48.5, "Moderate", "Fair", 10, 3, 3, 5, "ZONE_19", 181], ["L0469", 16.44976, 80.53025, 48.5, "Moderate", "Fair", 13, 5, 5, 6, "ZONE_07", 182], ["L0517", 16.52961, 80.36262, 48.5, "Moderate", "Poor", 12, 3, 8, 4, "ZONE_17", 183], ["L0664", 16.46535, 80.50553, 48.5, "Moderate", "Good", 11, 6, 2, 8, "ZONE_04", 184], ["L0496", 16.4467, 80.39484, 48.4, "Moderate", "Fair", 11, 2, 2, 6, "ZONE_10", 185], ["L0847", 16.44108, 80.39319, 48.4, "Moderate", "Poor", 11, 5, 6, 4, "ZONE_07", 186], ["L0099", 16.50318, 80.65576, 48.3, "Moderate", "Fair", 12, 3, 3, 8, "ZONE_05", 187], ["L0195", 16.41677, 80.47657, 48.3, "Moderate", "Critical", 11, 3, 1, 4, "ZONE_10", 188], ["L0523", 16.37023, 80.63476, 48.3, "Moderate", "Good", 16, 4, 3, 4, "ZONE_17", 189], ["L0809", 16.55191, 80.49392, 48.3, "Moderate", "Critical", 12, 2, 0, 3, "ZONE_15", 190], ["L0558", 16.38931, 80.49308, 48.1, "Moderate", "Poor", 11, 3, 6, 5, "ZONE_01", 191], ["L0775", 16.58462, 80.49976, 48.1, "Moderate", "Fair", 12, 2, 4, 6, "ZONE_17", 192], ["L0670", 16.37036, 80.57411, 48.0, "Moderate", "Poor", 12, 4, 7, 1, "ZONE_15", 193], ["L0074", 16.46161, 80.47469, 47.9, "Moderate", "Poor", 11, 2, 1, 7, "ZONE_17", 194], ["L0964", 16.43005, 80.53925, 47.9, "Moderate", "Poor", 16, 3, 4, 1, "ZONE_05", 195], ["L0311", 16.44883, 80.4676, 47.8, "Moderate", "Fair", 10, 4, 1, 8, "ZONE_04", 196], ["L0404", 16.51048, 80.54278, 47.8, "Moderate", "Fair", 11, 5, 1, 7, "ZONE_07", 197], ["L0412", 16.39278, 80.46121, 47.8, "Moderate", "Fair", 13, 4, 0, 4, "ZONE_20", 198], ["L0217", 16.4603, 80.59408, 47.7, "Moderate", "Critical", 11, 4, 1, 3, "ZONE_12", 199], ["L0693", 16.54036, 80.44205, 47.7, "Moderate", "Poor", 11, 3, 2, 2, "ZONE_12", 200], ["L0858", 16.53649, 80.47997, 47.7, "Moderate", "Poor", 14, 4, 3, 1, "ZONE_20", 201], ["L0880", 16.41273, 80.32132, 47.7, "Moderate", "Poor", 12, 1, 1, 5, "ZONE_08", 202], ["L0047", 16.31856, 80.58265, 47.6, "Moderate", "Fair", 9, 3, 4, 5, "ZONE_01", 203], ["L0229", 16.52556, 80.61683, 47.6, "Moderate", "Fair", 11, 4, 3, 3, "ZONE_02", 204], ["L0985", 16.45828, 80.27214, 47.6, "Moderate", "Poor", 10, 4, 3, 4, "ZONE_10", 205], ["L0423", 16.43211, 80.64801, 47.5, "Moderate", "Fair", 12, 1, 1, 4, "ZONE_13", 206], ["L0528", 16.4174, 80.49535, 47.5, "Moderate", "Poor", 10, 3, 4, 5, "ZONE_01", 207], ["L0567", 16.51247, 80.54333, 47.4, "Moderate", "Poor", 11, 1, 2, 5, "ZONE_14", 208], ["L0723", 16.4162, 80.40468, 47.4, "Moderate", "Poor", 11, 4, 5, 6, "ZONE_08", 209], ["L0367", 16.38415, 80.30488, 47.3, "Moderate", "Poor", 12, 1, 2, 6, "ZONE_17", 210], ["L0502", 16.49106, 80.47777, 47.3, "Moderate", "Poor", 13, 4, 4, 3, "ZONE_16", 211], ["L0094", 16.51303, 80.5067, 47.2, "Moderate", "Fair", 13, 5, 3, 2, "ZONE_11", 212], ["L0183", 16.48607, 80.56226, 47.2, "Moderate", "Fair", 13, 6, 2, 3, "ZONE_15", 213], ["L0592", 16.5948, 80.34876, 47.2, "Moderate", "Good", 16, 4, 7, 2, "ZONE_11", 214], ["L0681", 16.52832, 80.57222, 47.2, "Moderate", "Fair", 12, 4, 3, 3, "ZONE_14", 215], ["L0041", 16.4482, 80.45155, 47.1, "Moderate", "Poor", 10, 3, 4, 3, "ZONE_20", 216], ["L0337", 16.44609, 80.4435, 47.1, "Moderate", "Poor", 9, 5, 2, 6, "ZONE_19", 217], ["L0409", 16.52288, 80.42466, 47.1, "Moderate", "Fair", 17, 3, 5, 0, "ZONE_07", 218], ["L0472", 16.42817, 80.4225, 47.1, "Moderate", "Good", 10, 5, 2, 7, "ZONE_15", 219], ["L0823", 16.46303, 80.54484, 47.1, "Moderate", "Fair", 10, 4, 2, 5, "ZONE_06", 220], ["L0978", 16.41482, 80.54645, 47.1, "Moderate", "Fair", 11, 3, 0, 5, "ZONE_11", 221], ["L0071", 16.56669, 80.48107, 47.0, "Moderate", "Poor", 12, 7, 4, 1, "ZONE_09", 222], ["L0303", 16.64081, 80.43553, 46.9, "Moderate", "Critical", 11, 4, 5, 2, "ZONE_08", 223], ["L0402", 16.46471, 80.5472, 46.9, "Moderate", "Poor", 9, 3, 2, 5, "ZONE_02", 224], ["L0529", 16.56395, 80.51223, 46.9, "Moderate", "Good", 11, 4, 10, 3, "ZONE_04", 225], ["L0720", 16.44037, 80.48107, 46.9, "Moderate", "Critical", 12, 2, 2, 3, "ZONE_02", 226], ["L0754", 16.46836, 80.52705, 46.8, "Moderate", "Fair", 12, 3, 3, 5, "ZONE_04", 227], ["L0063", 16.4228, 80.51343, 46.7, "Moderate", "Fair", 13, 3, 3, 4, "ZONE_17", 228], ["L0753", 16.35232, 80.5711, 46.7, "Moderate", "Fair", 12, 5, 5, 4, "ZONE_16", 229], ["L0791", 16.45488, 80.49564, 46.7, "Moderate", "Fair", 14, 2, 4, 2, "ZONE_20", 230], ["L0381", 16.4366, 80.51315, 46.5, "Moderate", "Fair", 10, 4, 0, 7, "ZONE_05", 231], ["L0111", 16.43967, 80.4208, 46.4, "Moderate", "Good", 11, 1, 1, 7, "ZONE_08", 232], ["L0234", 16.49306, 80.42556, 46.4, "Moderate", "Fair", 14, 3, 4, 2, "ZONE_11", 233], ["L0546", 16.42851, 80.48335, 46.4, "Moderate", "Poor", 12, 5, 2, 1, "ZONE_09", 234], ["L0929", 16.45382, 80.42454, 46.4, "Moderate", "Fair", 12, 5, 3, 4, "ZONE_16", 235], ["L0292", 16.49118, 80.46017, 46.3, "Moderate", "Critical", 9, 5, 0, 5, "ZONE_07", 236], ["L0524", 16.3373, 80.59215, 46.3, "Moderate", "Critical", 12, 1, 5, 4, "ZONE_17", 237], ["L0566", 16.45905, 80.51652, 46.3, "Moderate", "Fair", 10, 2, 4, 6, "ZONE_05", 238], ["L0682", 16.56337, 80.33726, 46.3, "Moderate", "Good", 13, 3, 3, 4, "ZONE_11", 239], ["L0931", 16.38275, 80.45912, 46.3, "Moderate", "Fair", 13, 6, 4, 3, "ZONE_04", 240], ["L0083", 16.5166, 80.55203, 46.2, "Moderate", "Fair", 14, 4, 3, 3, "ZONE_03", 241], ["L0110", 16.47828, 80.48737, 46.2, "Moderate", "Fair", 10, 4, 2, 7, "ZONE_09", 242], ["L0185", 16.44261, 80.49912, 46.2, "Moderate", "Fair", 12, 6, 2, 2, "ZONE_07", 243], ["L0211", 16.37848, 80.54585, 46.2, "Moderate", "Poor", 14, 4, 3, 2, "ZONE_11", 244], ["L0277", 16.7065, 80.56185, 46.2, "Moderate", "Poor", 12, 6, 6, 1, "ZONE_16", 245], ["L0515", 16.27973, 80.54825, 46.2, "Moderate", "Good", 13, 3, 2, 4, "ZONE_05", 246], ["L0726", 16.42856, 80.46826, 46.2, "Moderate", "Fair", 10, 2, 1, 6, "ZONE_03", 247], ["L0800", 16.44562, 80.53868, 46.2, "Moderate", "Poor", 11, 4, 0, 5, "ZONE_13", 248], ["L0021", 16.46916, 80.57555, 46.0, "Moderate", "Fair", 11, 3, 2, 6, "ZONE_04", 249], ["L0728", 16.48547, 80.50339, 46.0, "Moderate", "Good", 16, 4, 5, 2, "ZONE_18", 250], ["L0005", 16.2702, 80.43971, 45.9, "Moderate", "Poor", 10, 5, 2, 4, "ZONE_10", 251], ["L0067", 16.46516, 80.55691, 45.9, "Moderate", "Fair", 14, 6, 3, 1, "ZONE_20", 252], ["L0313", 16.34061, 80.4387, 45.9, "Moderate", "Critical", 9, 1, 4, 2, "ZONE_03", 253], ["L0116", 16.43552, 80.63372, 45.8, "Moderate", "Good", 13, 2, 7, 4, "ZONE_02", 254], ["L0380", 16.46861, 80.42304, 45.8, "Moderate", "Good", 15, 3, 4, 5, "ZONE_12", 255], ["L0881", 16.39289, 80.53636, 45.8, "Moderate", "Poor", 9, 2, 1, 4, "ZONE_16", 256], ["L0913", 16.27496, 80.46341, 45.7, "Moderate", "Poor", 11, 2, 3, 5, "ZONE_05", 257], ["L0136", 16.43728, 80.42918, 45.6, "Moderate", "Poor", 18, 1, 1, 1, "ZONE_08", 258], ["L0092", 16.53773, 80.5274, 45.5, "Moderate", "Fair", 14, 4, 2, 4, "ZONE_19", 259], ["L0180", 16.44805, 80.41177, 45.5, "Moderate", "Critical", 10, 2, 1, 5, "ZONE_06", 260], ["L0713", 16.38619, 80.2996, 45.5, "Moderate", "Fair", 14, 4, 3, 2, "ZONE_16", 261], ["L0605", 16.46723, 80.24807, 45.4, "Moderate", "Good", 14, 6, 6, 2, "ZONE_04", 262], ["L0075", 16.43569, 80.6084, 45.3, "Moderate", "Critical", 11, 3, 2, 1, "ZONE_01", 263], ["L0214", 16.50176, 80.38379, 45.3, "Moderate", "Poor", 11, 3, 0, 5, "ZONE_14", 264], ["L0780", 16.39581, 80.5274, 45.3, "Moderate", "Poor", 11, 2, 5, 5, "ZONE_19", 265], ["L0835", 16.45829, 80.52962, 45.3, "Moderate", "Poor", 11, 2, 1, 4, "ZONE_02", 266], ["L0842", 16.39023, 80.50602, 45.3, "Moderate", "Poor", 9, 4, 2, 3, "ZONE_12", 267], ["L0138", 16.4618, 80.52079, 45.2, "Moderate", "Good", 10, 5, 4, 2, "ZONE_03", 268], ["L0318", 16.32735, 80.56414, 45.2, "Moderate", "Poor", 13, 2, 2, 3, "ZONE_10", 269], ["L0322", 16.4261, 80.6441, 45.2, "Moderate", "Good", 16, 4, 5, 1, "ZONE_05", 270], ["L0356", 16.29951, 80.56673, 45.2, "Moderate", "Fair", 14, 2, 3, 4, "ZONE_03", 271], ["L0079", 16.39613, 80.52677, 45.1, "Moderate", "Fair", 15, 4, 7, 2, "ZONE_11", 272], ["L0095", 16.50601, 80.46531, 45.1, "Moderate", "Poor", 12, 3, 1, 3, "ZONE_09", 273], ["L0206", 16.44872, 80.45223, 45.1, "Moderate", "Good", 12, 2, 7, 8, "ZONE_05", 274], ["L0342", 16.43901, 80.443, 45.1, "Moderate", "Poor", 13, 2, 4, 3, "ZONE_08", 275], ["L0452", 16.57936, 80.47801, 45.1, "Moderate", "Poor", 12, 2, 1, 4, "ZONE_11", 276], ["L0479", 16.36161, 80.45114, 45.1, "Moderate", "Fair", 8, 4, 1, 8, "ZONE_18", 277], ["L0191", 16.56864, 80.5029, 44.9, "Moderate", "Good", 12, 5, 3, 5, "ZONE_04", 278], ["L0750", 16.42129, 80.54739, 44.9, "Moderate", "Good", 15, 5, 3, 3, "ZONE_16", 279], ["L0918", 16.53289, 80.47078, 44.9, "Moderate", "Fair", 11, 4, 2, 3, "ZONE_17", 280], ["L0235", 16.41933, 80.3303, 44.8, "Moderate", "Fair", 12, 6, 3, 2, "ZONE_11", 281], ["L0669", 16.54385, 80.57643, 44.8, "Moderate", "Fair", 12, 5, 3, 2, "ZONE_11", 282], ["L0245", 16.52792, 80.50724, 44.7, "Moderate", "Good", 11, 4, 1, 6, "ZONE_18", 283], ["L0276", 16.52928, 80.56156, 44.7, "Moderate", "Poor", 10, 1, 1, 7, "ZONE_09", 284], ["L0293", 16.51088, 80.38189, 44.7, "Moderate", "Poor", 10, 3, 1, 4, "ZONE_12", 285], ["L0420", 16.4066, 80.46097, 44.7, "Moderate", "Fair", 10, 3, 3, 6, "ZONE_12", 286], ["L0743", 16.58996, 80.47823, 44.7, "Moderate", "Good", 13, 4, 2, 3, "ZONE_04", 287], ["L0959", 16.4294, 80.52869, 44.7, "Moderate", "Good", 10, 4, 0, 7, "ZONE_12", 288], ["L0820", 16.40257, 80.3571, 44.6, "Moderate", "Poor", 12, 1, 5, 3, "ZONE_13", 289], ["L0345", 16.4367, 80.56622, 44.5, "Moderate", "Good", 11, 4, 0, 3, "ZONE_04", 290], ["L0873", 16.34896, 80.53997, 44.5, "Moderate", "Good", 16, 3, 3, 5, "ZONE_02", 291], ["L0921", 16.40375, 80.46919, 44.5, "Moderate", "Fair", 15, 3, 4, 1, "ZONE_08", 292], ["L0096", 16.54358, 80.51506, 44.4, "Moderate", "Fair", 9, 3, 1, 8, "ZONE_05", 293], ["L0384", 16.35388, 80.46, 44.4, "Moderate", "Fair", 14, 4, 1, 3, "ZONE_17", 294], ["L0595", 16.47571, 80.3725, 44.4, "Moderate", "Poor", 15, 3, 2, 2, "ZONE_13", 295], ["L0663", 16.49965, 80.40436, 44.4, "Moderate", "Good", 11, 5, 3, 5, "ZONE_20", 296], ["L0853", 16.44572, 80.55382, 44.4, "Moderate", "Good", 10, 2, 1, 9, "ZONE_10", 297], ["L0176", 16.58474, 80.31394, 44.3, "Moderate", "Fair", 10, 3, 0, 4, "ZONE_14", 298], ["L0370", 16.47349, 80.43887, 44.3, "Moderate", "Fair", 13, 2, 1, 4, "ZONE_10", 299], ["L0655", 16.42293, 80.5292, 44.3, "Moderate", "Fair", 8, 2, 2, 8, "ZONE_15", 300], ["L0012", 16.33347, 80.493, 44.2, "Moderate", "Poor", 14, 3, 0, 2, "ZONE_19", 301], ["L0223", 16.34843, 80.38319, 44.2, "Moderate", "Critical", 10, 1, 2, 3, "ZONE_20", 302], ["L0714", 16.41295, 80.4867, 44.2, "Moderate", "Poor", 10, 3, 2, 4, "ZONE_05", 303], ["L0863", 16.41297, 80.48993, 44.2, "Moderate", "Fair", 12, 4, 5, 3, "ZONE_18", 304], ["L0892", 16.53351, 80.40801, 44.2, "Moderate", "Poor", 10, 0, 3, 4, "ZONE_07", 305], ["L0896", 16.60218, 80.52939, 44.2, "Moderate", "Fair", 11, 4, 6, 2, "ZONE_14", 306], ["L0936", 16.41886, 80.54479, 44.2, "Moderate", "Poor", 13, 1, 3, 3, "ZONE_04", 307], ["L0583", 16.48036, 80.40584, 44.1, "Moderate", "Fair", 11, 6, 5, 2, "ZONE_01", 308], ["L0215", 16.44695, 80.61467, 44.0, "Moderate", "Poor", 14, 5, 1, 0, "ZONE_09", 309], ["L0418", 16.35436, 80.5273, 44.0, "Moderate", "Fair", 13, 3, 3, 2, "ZONE_05", 310], ["L0459", 16.25265, 80.48413, 44.0, "Moderate", "Fair", 13, 5, 0, 1, "ZONE_10", 311], ["L0612", 16.55808, 80.49865, 44.0, "Moderate", "Fair", 9, 2, 6, 4, "ZONE_02", 312], ["L0758", 16.59486, 80.43601, 44.0, "Moderate", "Poor", 14, 4, 3, 0, "ZONE_18", 313], ["L0899", 16.48933, 80.3744, 44.0, "Moderate", "Fair", 10, 3, 0, 3, "ZONE_14", 314], ["L0257", 16.3324, 80.61818, 43.9, "Moderate", "Fair", 13, 2, 2, 3, "ZONE_02", 315], ["L0549", 16.61127, 80.49253, 43.9, "Moderate", "Poor", 13, 7, 2, 0, "ZONE_04", 316], ["L0093", 16.48708, 80.5311, 43.8, "Moderate", "Poor", 10, 2, 4, 3, "ZONE_04", 317], ["L0137", 16.39616, 80.53935, 43.8, "Moderate", "Poor", 13, 6, 2, 1, "ZONE_15", 318], ["L0145", 16.44016, 80.58143, 43.8, "Moderate", "Poor", 11, 2, 5, 4, "ZONE_09", 319], ["L0329", 16.47575, 80.4412, 43.8, "Moderate", "Fair", 11, 4, 2, 4, "ZONE_18", 320], ["L0045", 16.68638, 80.51257, 43.7, "Moderate", "Fair", 12, 1, 2, 4, "ZONE_18", 321], ["L0350", 16.44752, 80.51573, 43.7, "Moderate", "Poor", 9, 5, 2, 3, "ZONE_16", 322], ["L0749", 16.5757, 80.58892, 43.7, "Moderate", "Poor", 13, 2, 2, 3, "ZONE_07", 323], ["L0285", 16.2697, 80.5043, 43.6, "Moderate", "Poor", 9, 4, 2, 4, "ZONE_02", 324], ["L0551", 16.53696, 80.47916, 43.6, "Moderate", "Poor", 10, 2, 5, 2, "ZONE_13", 325], ["L0901", 16.40861, 80.5088, 43.6, "Moderate", "Fair", 15, 4, 2, 1, "ZONE_17", 326], ["L0630", 16.48064, 80.46291, 43.5, "Moderate", "Poor", 9, 1, 2, 9, "ZONE_06", 327], ["L0997", 16.42821, 80.61022, 43.5, "Moderate", "Fair", 12, 3, 4, 3, "ZONE_03", 328], ["L0482", 16.50248, 80.58292, 43.4, "Moderate", "Good", 13, 7, 2, 1, "ZONE_20", 329], ["L0751", 16.47996, 80.49037, 43.4, "Moderate", "Poor", 12, 2, 1, 5, "ZONE_12", 330], ["L0330", 16.40726, 80.5506, 43.3, "Moderate", "Fair", 9, 2, 1, 7, "ZONE_19", 331], ["L0654", 16.40278, 80.54089, 43.3, "Moderate", "Good", 11, 5, 1, 4, "ZONE_10", 332], ["L0841", 16.43418, 80.48829, 43.3, "Moderate", "Poor", 8, 1, 3, 4, "ZONE_03", 333], ["L0550", 16.58359, 80.56268, 43.2, "Moderate", "Poor", 7, 4, 1, 6, "ZONE_17", 334], ["L0894", 16.49952, 80.39988, 43.2, "Moderate", "Good", 13, 5, 4, 2, "ZONE_11", 335], ["L0958", 16.34312, 80.47894, 43.2, "Moderate", "Fair", 14, 3, 1, 2, "ZONE_01", 336], ["L0179", 16.39199, 80.46852, 43.1, "Moderate", "Fair", 13, 3, 3, 4, "ZONE_11", 337], ["L0231", 16.50264, 80.42283, 43.1, "Moderate", "Fair", 12, 4, 4, 3, "ZONE_03", 338], ["L0585", 16.31247, 80.47669, 43.1, "Moderate", "Poor", 11, 1, 4, 3, "ZONE_05", 339], ["L0634", 16.46865, 80.49612, 43.1, "Moderate", "Good", 13, 4, 4, 3, "ZONE_01", 340], ["L0799", 16.49703, 80.65179, 43.1, "Moderate", "Poor", 10, 2, 4, 5, "ZONE_06", 341], ["L0972", 16.30322, 80.50736, 43.1, "Moderate", "Good", 12, 3, 8, 3, "ZONE_20", 342], ["L0406", 16.56038, 80.59103, 43.0, "Moderate", "Fair", 8, 3, 2, 9, "ZONE_20", 343], ["L0503", 16.37758, 80.51173, 43.0, "Moderate", "Fair", 11, 1, 3, 6, "ZONE_19", 344], ["L0755", 16.51278, 80.52371, 43.0, "Moderate", "Good", 11, 5, 1, 7, "ZONE_08", 345], ["L0888", 16.50216, 80.64421, 43.0, "Moderate", "Poor", 12, 4, 4, 2, "ZONE_08", 346], ["L0029", 16.4623, 80.46295, 42.9, "Moderate", "Fair", 10, 4, 4, 5, "ZONE_10", 347], ["L0351", 16.44531, 80.49787, 42.9, "Moderate", "Poor", 13, 5, 2, 3, "ZONE_13", 348], ["L0869", 16.34479, 80.61462, 42.9, "Moderate", "Critical", 8, 4, 2, 4, "ZONE_18", 349], ["L0355", 16.46013, 80.70175, 42.8, "Moderate", "Good", 12, 5, 3, 3, "ZONE_11", 350], ["L0680", 16.31556, 80.36634, 42.7, "Moderate", "Fair", 11, 3, 2, 3, "ZONE_06", 351], ["L0968", 16.45692, 80.37192, 42.7, "Moderate", "Fair", 11, 2, 1, 6, "ZONE_05", 352], ["L0001", 16.5164, 80.46389, 42.6, "Moderate", "Good", 11, 2, 5, 4, "ZONE_19", 353], ["L0146", 16.36678, 80.52064, 42.6, "Moderate", "Good", 15, 5, 0, 2, "ZONE_10", 354], ["L0373", 16.41671, 80.43399, 42.6, "Moderate", "Good", 12, 6, 2, 2, "ZONE_04", 355], ["L0410", 16.39085, 80.45295, 42.6, "Moderate", "Fair", 13, 2, 3, 5, "ZONE_20", 356], ["L0241", 16.48034, 80.68255, 42.5, "Moderate", "Poor", 12, 3, 0, 3, "ZONE_07", 357], ["L0638", 16.51671, 80.49954, 42.5, "Moderate", "Good", 11, 2, 4, 5, "ZONE_09", 358], ["L0736", 16.45435, 80.61509, 42.5, "Moderate", "Fair", 13, 1, 3, 4, "ZONE_06", 359], ["L0933", 16.41136, 80.42977, 42.5, "Moderate", "Fair", 11, 3, 3, 4, "ZONE_20", 360], ["L0106", 16.38518, 80.49826, 42.4, "Moderate", "Good", 10, 4, 2, 4, "ZONE_15", 361], ["L0154", 16.46451, 80.638, 42.4, "Moderate", "Poor", 9, 3, 3, 6, "ZONE_16", 362], ["L0491", 16.37358, 80.42095, 42.4, "Moderate", "Fair", 14, 4, 2, 2, "ZONE_10", 363], ["L0560", 16.36119, 80.4977, 42.4, "Moderate", "Poor", 10, 2, 2, 2, "ZONE_20", 364], ["L0666", 16.40177, 80.4712, 42.4, "Moderate", "Poor", 13, 2, 5, 2, "ZONE_10", 365], ["L0942", 16.54022, 80.48217, 42.4, "Moderate", "Good", 13, 3, 4, 1, "ZONE_06", 366], ["L0594", 16.44734, 80.50693, 42.3, "Moderate", "Fair", 9, 4, 3, 5, "ZONE_17", 367], ["L0766", 16.40915, 80.39903, 42.3, "Moderate", "Poor", 7, 2, 4, 7, "ZONE_19", 368], ["L0161", 16.44818, 80.48545, 42.2, "Moderate", "Fair", 12, 3, 3, 3, "ZONE_14", 369], ["L0375", 16.38451, 80.45919, 42.2, "Moderate", "Fair", 11, 5, 8, 3, "ZONE_03", 370], ["L0857", 16.47949, 80.5192, 42.2, "Moderate", "Fair", 12, 7, 2, 0, "ZONE_18", 371], ["L0646", 16.50253, 80.48482, 42.1, "Moderate", "Fair", 7, 2, 1, 7, "ZONE_01", 372], ["L0668", 16.4647, 80.53047, 42.1, "Moderate", "Poor", 9, 4, 0, 3, "ZONE_13", 373], ["L0721", 16.55489, 80.45094, 42.1, "Moderate", "Good", 14, 7, 0, 2, "ZONE_09", 374], ["L0783", 16.50077, 80.47983, 42.1, "Moderate", "Fair", 12, 2, 6, 2, "ZONE_06", 375], ["L0006", 16.64817, 80.31427, 42.0, "Moderate", "Poor", 10, 2, 3, 4, "ZONE_07", 376], ["L0030", 16.54536, 80.46042, 42.0, "Moderate", "Fair", 10, 4, 3, 3, "ZONE_12", 377], ["L0371", 16.48019, 80.59543, 42.0, "Moderate", "Fair", 12, 4, 1, 3, "ZONE_08", 378], ["L0919", 16.44627, 80.38823, 42.0, "Moderate", "Poor", 12, 2, 3, 1, "ZONE_10", 379], ["L0118", 16.32177, 80.49459, 41.9, "Moderate", "Fair", 13, 4, 4, 2, "ZONE_18", 380], ["L0144", 16.45969, 80.53239, 41.9, "Moderate", "Good", 11, 5, 2, 3, "ZONE_03", 381], ["L0264", 16.32837, 80.54048, 41.9, "Moderate", "Fair", 12, 4, 3, 3, "ZONE_01", 382], ["L0396", 16.48117, 80.48385, 41.9, "Moderate", "Fair", 13, 5, 2, 2, "ZONE_01", 383], ["L0694", 16.37176, 80.45064, 41.9, "Moderate", "Fair", 10, 1, 5, 4, "ZONE_14", 384], ["L0078", 16.52112, 80.51853, 41.8, "Moderate", "Poor", 13, 3, 2, 2, "ZONE_15", 385], ["L0304", 16.3956, 80.66692, 41.8, "Moderate", "Fair", 13, 3, 2, 2, "ZONE_03", 386], ["L0339", 16.41915, 80.53791, 41.8, "Moderate", "Poor", 11, 1, 4, 4, "ZONE_03", 387], ["L0340", 16.41372, 80.44286, 41.8, "Moderate", "Fair", 9, 5, 3, 5, "ZONE_03", 388], ["L0752", 16.46606, 80.56882, 41.8, "Moderate", "Fair", 8, 5, 2, 4, "ZONE_20", 389], ["L0347", 16.41522, 80.52892, 41.7, "Moderate", "Fair", 11, 4, 6, 2, "ZONE_18", 390], ["L0492", 16.46552, 80.56942, 41.7, "Moderate", "Fair", 8, 4, 1, 7, "ZONE_04", 391], ["L0718", 16.49247, 80.58488, 41.7, "Moderate", "Fair", 16, 2, 4, 2, "ZONE_16", 392], ["L0817", 16.45901, 80.64456, 41.7, "Moderate", "Poor", 9, 4, 0, 2, "ZONE_06", 393], ["L0988", 16.50015, 80.41781, 41.7, "Moderate", "Fair", 12, 2, 0, 7, "ZONE_09", 394], ["L0013", 16.37777, 80.51435, 41.6, "Moderate", "Fair", 10, 3, 4, 4, "ZONE_18", 395], ["L0500", 16.42997, 80.523, 41.6, "Moderate", "Fair", 13, 2, 0, 4, "ZONE_14", 396], ["L0555", 16.45038, 80.4107, 41.6, "Moderate", "Good", 16, 1, 2, 2, "ZONE_20", 397], ["L0562", 16.53518, 80.51029, 41.6, "Moderate", "Fair", 11, 2, 1, 6, "ZONE_04", 398], ["L0662", 16.40836, 80.6693, 41.6, "Moderate", "Fair", 14, 2, 4, 4, "ZONE_07", 399], ["L0288", 16.59696, 80.55052, 41.5, "Moderate", "Poor", 7, 1, 4, 7, "ZONE_09", 400], ["L0593", 16.51691, 80.57115, 41.5, "Moderate", "Critical", 10, 2, 4, 3, "ZONE_15", 401], ["L0644", 16.50543, 80.47596, 41.5, "Moderate", "Poor", 11, 2, 2, 0, "ZONE_11", 402], ["L0057", 16.4796, 80.43709, 41.3, "Moderate", "Poor", 9, 2, 1, 3, "ZONE_02", 403], ["L0169", 16.38068, 80.53365, 41.3, "Moderate", "Fair", 13, 4, 4, 3, "ZONE_15", 404], ["L0430", 16.3306, 80.36282, 41.3, "Moderate", "Fair", 8, 3, 4, 7, "ZONE_12", 405], ["L0465", 16.52137, 80.44222, 41.3, "Moderate", "Critical", 10, 2, 5, 1, "ZONE_12", 406], ["L0810", 16.39535, 80.53577, 41.3, "Moderate", "Good", 13, 6, 2, 1, "ZONE_10", 407], ["L0833", 16.28384, 80.5943, 41.2, "Moderate", "Poor", 7, 4, 2, 6, "ZONE_17", 408], ["L0915", 16.48835, 80.40433, 41.2, "Moderate", "Poor", 10, 2, 1, 4, "ZONE_02", 409], ["L0934", 16.33228, 80.48489, 41.2, "Moderate", "Good", 13, 2, 3, 2, "ZONE_06", 410], ["L0263", 16.49345, 80.66325, 41.1, "Moderate", "Fair", 13, 4, 3, 1, "ZONE_05", 411], ["L0610", 16.33722, 80.52348, 41.1, "Moderate", "Poor", 8, 4, 1, 5, "ZONE_07", 412], ["L0167", 16.43566, 80.41195, 41.0, "Moderate", "Critical", 11, 2, 2, 3, "ZONE_15", 413], ["L0600", 16.42059, 80.54998, 41.0, "Moderate", "Fair", 9, 2, 4, 5, "ZONE_09", 414], ["L0876", 16.49633, 80.56637, 41.0, "Moderate", "Poor", 10, 4, 5, 2, "ZONE_04", 415], ["L0625", 16.41459, 80.55176, 40.9, "Moderate", "Poor", 9, 3, 1, 6, "ZONE_07", 416], ["L0738", 16.20113, 80.4113, 40.9, "Moderate", "Poor", 7, 2, 1, 7, "ZONE_07", 417], ["L0850", 16.38154, 80.59031, 40.9, "Moderate", "Fair", 11, 3, 1, 5, "ZONE_14", 418], ["L0314", 16.41173, 80.60569, 40.8, "Moderate", "Fair", 9, 4, 2, 6, "ZONE_08", 419], ["L0453", 16.48892, 80.55535, 40.8, "Moderate", "Fair", 10, 4, 0, 6, "ZONE_03", 420], ["L0794", 16.43811, 80.59219, 40.8, "Moderate", "Good", 13, 6, 1, 1, "ZONE_18", 421], ["L0822", 16.42195, 80.72158, 40.8, "Moderate", "Poor", 11, 4, 1, 1, "ZONE_18", 422], ["L0864", 16.3844, 80.49708, 40.8, "Moderate", "Good", 10, 4, 1, 6, "ZONE_10", 423], ["L0184", 16.42763, 80.54456, 40.7, "Moderate", "Fair", 12, 2, 4, 2, "ZONE_18", 424], ["L0305", 16.42779, 80.48922, 40.7, "Moderate", "Poor", 10, 4, 1, 4, "ZONE_04", 425], ["L0727", 16.41328, 80.44612, 40.7, "Moderate", "Poor", 10, 4, 1, 2, "ZONE_13", 426], ["L0130", 16.41597, 80.43265, 40.6, "Moderate", "Poor", 10, 3, 1, 3, "ZONE_07", 427], ["L0141", 16.40965, 80.6294, 40.6, "Moderate", "Good", 10, 4, 2, 5, "ZONE_19", 428], ["L0168", 16.28333, 80.5578, 40.6, "Moderate", "Fair", 12, 4, 1, 2, "ZONE_17", 429], ["L0268", 16.44819, 80.51334, 40.6, "Moderate", "Good", 11, 1, 5, 5, "ZONE_10", 430], ["L0532", 16.51824, 80.59326, 40.5, "Moderate", "Poor", 8, 3, 4, 1, "ZONE_07", 431], ["L0603", 16.33225, 80.55147, 40.5, "Moderate", "Good", 15, 5, 3, 2, "ZONE_12", 432], ["L0676", 16.43835, 80.43198, 40.5, "Moderate", "Good", 13, 1, 6, 1, "ZONE_08", 433], ["L0084", 16.51982, 80.55736, 40.4, "Moderate", "Good", 12, 5, 4, 3, "ZONE_15", 434], ["L0377", 16.38999, 80.53309, 40.4, "Moderate", "Poor", 9, 4, 3, 3, "ZONE_08", 435], ["L0762", 16.51265, 80.47263, 40.4, "Moderate", "Good", 15, 3, 1, 3, "ZONE_07", 436], ["L0796", 16.443, 80.48361, 40.4, "Moderate", "Fair", 12, 5, 2, 1, "ZONE_09", 437], ["L0069", 16.49965, 80.53736, 40.3, "Moderate", "Fair", 12, 4, 2, 3, "ZONE_10", 438], ["L0280", 16.48223, 80.44143, 40.3, "Moderate", "Fair", 11, 4, 2, 3, "ZONE_18", 439], ["L0641", 16.43259, 80.66171, 40.2, "Moderate", "Good", 15, 2, 4, 3, "ZONE_11", 440], ["L0661", 16.43169, 80.58603, 40.2, "Moderate", "Fair", 10, 2, 1, 7, "ZONE_03", 441], ["L0991", 16.51179, 80.4821, 40.2, "Moderate", "Good", 10, 4, 2, 4, "ZONE_01", 442], ["L0052", 16.52303, 80.39366, 40.1, "Moderate", "Poor", 8, 3, 4, 1, "ZONE_12", 443], ["L0115", 16.39455, 80.55203, 40.1, "Moderate", "Good", 12, 4, 3, 2, "ZONE_18", 444], ["L0126", 16.49471, 80.6666, 40.1, "Moderate", "Fair", 10, 6, 2, 3, "ZONE_16", 445], ["L0432", 16.26602, 80.42372, 40.1, "Moderate", "Good", 9, 4, 2, 6, "ZONE_02", 446], ["L0440", 16.3073, 80.52482, 40.1, "Moderate", "Fair", 10, 2, 2, 6, "ZONE_20", 447], ["L0467", 16.45906, 80.53322, 40.1, "Moderate", "Critical", 10, 2, 2, 3, "ZONE_19", 448], ["L0679", 16.34372, 80.61655, 40.1, "Moderate", "Fair", 6, 1, 5, 7, "ZONE_11", 449], ["L0763", 16.48477, 80.52572, 40.1, "Moderate", "Fair", 12, 1, 3, 4, "ZONE_03", 450], ["L0062", 16.44997, 80.60263, 40.0, "Moderate", "Poor", 6, 3, 3, 7, "ZONE_04", 451], ["L0416", 16.4473, 80.40458, 40.0, "Moderate", "Good", 12, 3, 3, 4, "ZONE_16", 452], ["L0439", 16.56075, 80.38275, 40.0, "Moderate", "Fair", 14, 3, 2, 0, "ZONE_03", 453], ["L0530", 16.53311, 80.38824, 40.0, "Moderate", "Fair", 12, 2, 2, 2, "ZONE_11", 454], ["L0674", 16.39955, 80.45079, 40.0, "Moderate", "Poor", 11, 3, 3, 3, "ZONE_09", 455], ["L0735", 16.48014, 80.56405, 40.0, "Moderate", "Poor", 8, 5, 1, 1, "ZONE_19", 456], ["L0846", 16.46221, 80.45771, 40.0, "Moderate", "Critical", 9, 1, 1, 5, "ZONE_13", 457], ["L0886", 16.51528, 80.48583, 40.0, "Moderate", "Fair", 12, 4, 2, 2, "ZONE_01", 458], ["L0904", 16.50933, 80.52622, 40.0, "Moderate", "Fair", 9, 1, 7, 3, "ZONE_09", 459], ["L0060", 16.39485, 80.39816, 39.9, "Lower", "Poor", 7, 3, 0, 4, "ZONE_09", 460], ["L0100", 16.47761, 80.42695, 39.9, "Lower", "Good", 14, 2, 3, 2, "ZONE_13", 461], ["L0119", 16.4391, 80.42681, 39.9, "Lower", "Good", 12, 3, 2, 2, "ZONE_02", 462], ["L0133", 16.52827, 80.45895, 39.9, "Lower", "Fair", 9, 4, 5, 3, "ZONE_14", 463], ["L0194", 16.42353, 80.50222, 39.9, "Lower", "Fair", 9, 6, 2, 3, "ZONE_09", 464], ["L0158", 16.55542, 80.50792, 39.8, "Lower", "Good", 11, 4, 1, 5, "ZONE_11", 465], ["L0444", 16.53806, 80.40313, 39.7, "Lower", "Good", 13, 3, 3, 2, "ZONE_14", 466], ["L0531", 16.3348, 80.52491, 39.7, "Lower", "Fair", 8, 2, 3, 7, "ZONE_05", 467], ["L0570", 16.41356, 80.49428, 39.7, "Lower", "Poor", 10, 4, 3, 1, "ZONE_05", 468], ["L0621", 16.39752, 80.43475, 39.7, "Lower", "Fair", 9, 3, 3, 4, "ZONE_01", 469], ["L0821", 16.42844, 80.46197, 39.7, "Lower", "Fair", 9, 2, 1, 5, "ZONE_15", 470], ["L0481", 16.33065, 80.5918, 39.6, "Lower", "Poor", 9, 2, 3, 1, "ZONE_05", 471], ["L0577", 16.40899, 80.56592, 39.6, "Lower", "Fair", 13, 1, 6, 2, "ZONE_11", 472], ["L0695", 16.47513, 80.51241, 39.6, "Lower", "Poor", 8, 4, 5, 2, "ZONE_06", 473], ["L0937", 16.53176, 80.4928, 39.6, "Lower", "Fair", 12, 4, 1, 1, "ZONE_02", 474], ["L0949", 16.49537, 80.4804, 39.6, "Lower", "Fair", 9, 4, 2, 5, "ZONE_15", 475], ["L0230", 16.54235, 80.5282, 39.5, "Lower", "Poor", 10, 4, 0, 3, "ZONE_14", 476], ["L0364", 16.44465, 80.3507, 39.5, "Lower", "Fair", 11, 3, 1, 3, "ZONE_16", 477], ["L0973", 16.4754, 80.49774, 39.5, "Lower", "Fair", 12, 3, 2, 4, "ZONE_20", 478], ["L0232", 16.31111, 80.43331, 39.4, "Lower", "Fair", 10, 5, 1, 0, "ZONE_12", 479], ["L0325", 16.49623, 80.48515, 39.4, "Lower", "Good", 11, 3, 1, 4, "ZONE_04", 480], ["L0366", 16.42487, 80.48607, 39.4, "Lower", "Fair", 10, 5, 1, 5, "ZONE_20", 481], ["L0369", 16.57123, 80.53141, 39.4, "Lower", "Good", 11, 4, 7, 1, "ZONE_12", 482], ["L0454", 16.34554, 80.40395, 39.4, "Lower", "Good", 9, 2, 1, 8, "ZONE_19", 483], ["L0631", 16.50472, 80.49379, 39.4, "Lower", "Poor", 9, 1, 6, 2, "ZONE_06", 484], ["L0017", 16.38419, 80.49441, 39.2, "Lower", "Good", 10, 2, 3, 4, "ZONE_07", 485], ["L0296", 16.3274, 80.37871, 39.2, "Lower", "Poor", 12, 1, 6, 2, "ZONE_19", 486], ["L0344", 16.57777, 80.49661, 39.2, "Lower", "Poor", 8, 4, 3, 2, "ZONE_13", 487], ["L0363", 16.54632, 80.37943, 39.2, "Lower", "Fair", 10, 4, 4, 1, "ZONE_16", 488], ["L0576", 16.3888, 80.54681, 39.2, "Lower", "Good", 10, 4, 2, 4, "ZONE_01", 489], ["L0536", 16.41442, 80.57912, 39.1, "Lower", "Fair", 11, 3, 3, 3, "ZONE_19", 490], ["L0872", 16.48731, 80.57269, 39.1, "Lower", "Poor", 10, 2, 5, 2, "ZONE_10", 491], ["L0943", 16.43259, 80.2926, 39.1, "Lower", "Poor", 10, 4, 3, 2, "ZONE_18", 492], ["L0031", 16.53371, 80.46899, 39.0, "Lower", "Critical", 7, 3, 1, 4, "ZONE_02", 493], ["L0651", 16.36128, 80.45922, 39.0, "Lower", "Good", 9, 2, 3, 4, "ZONE_02", 494], ["L0671", 16.41488, 80.56824, 39.0, "Lower", "Fair", 14, 1, 5, 2, "ZONE_03", 495], ["L0971", 16.40984, 80.52508, 39.0, "Lower", "Good", 11, 4, 5, 4, "ZONE_11", 496], ["L0039", 16.47467, 80.48092, 38.6, "Lower", "Poor", 13, 1, 3, 3, "ZONE_08", 497], ["L0652", 16.46856, 80.54617, 38.6, "Lower", "Critical", 8, 4, 2, 2, "ZONE_01", 498], ["L0960", 16.26956, 80.56878, 38.6, "Lower", "Fair", 10, 2, 3, 4, "ZONE_11", 499], ["L0087", 16.52163, 80.41318, 38.5, "Lower", "Fair", 12, 3, 4, 4, "ZONE_06", 500], ["L0656", 16.52238, 80.5061, 38.5, "Lower", "Good", 10, 4, 4, 6, "ZONE_11", 501], ["L0765", 16.48874, 80.55661, 38.5, "Lower", "Critical", 10, 4, 2, 1, "ZONE_16", 502], ["L0975", 16.33797, 80.45803, 38.5, "Lower", "Fair", 13, 1, 4, 2, "ZONE_11", 503], ["L0228", 16.57599, 80.48839, 38.4, "Lower", "Critical", 9, 2, 3, 3, "ZONE_05", 504], ["L0327", 16.3985, 80.45171, 38.4, "Lower", "Fair", 9, 2, 2, 4, "ZONE_15", 505], ["L0336", 16.5457, 80.37805, 38.4, "Lower", "Good", 8, 5, 2, 5, "ZONE_07", 506], ["L0468", 16.32046, 80.61625, 38.4, "Lower", "Fair", 11, 5, 2, 1, "ZONE_08", 507], ["L0382", 16.33896, 80.55936, 38.3, "Lower", "Fair", 6, 3, 4, 7, "ZONE_01", 508], ["L0037", 16.46504, 80.61022, 38.2, "Lower", "Good", 12, 4, 2, 3, "ZONE_03", 509], ["L0066", 16.36554, 80.42932, 38.2, "Lower", "Good", 11, 4, 0, 4, "ZONE_16", 510], ["L0349", 16.48952, 80.53091, 38.2, "Lower", "Poor", 7, 1, 1, 5, "ZONE_17", 511], ["L0645", 16.4054, 80.47598, 38.2, "Lower", "Poor", 10, 4, 4, 1, "ZONE_11", 512], ["L0533", 16.47187, 80.49504, 38.1, "Lower", "Critical", 7, 3, 1, 4, "ZONE_13", 513], ["L0552", 16.44224, 80.55923, 38.1, "Lower", "Fair", 12, 1, 3, 5, "ZONE_01", 514], ["L0744", 16.35007, 80.60264, 38.1, "Lower", "Fair", 9, 4, 2, 5, "ZONE_06", 515], ["L0495", 16.48691, 80.51807, 38.0, "Lower", "Poor", 9, 4, 5, 3, "ZONE_13", 516], ["L0597", 16.49479, 80.47821, 38.0, "Lower", "Fair", 11, 3, 2, 2, "ZONE_07", 517], ["L0623", 16.50554, 80.67739, 38.0, "Lower", "Fair", 10, 4, 3, 2, "ZONE_03", 518], ["L0422", 16.56145, 80.53128, 37.9, "Lower", "Poor", 9, 2, 4, 3, "ZONE_20", 519], ["L0497", 16.46889, 80.47222, 37.9, "Lower", "Good", 12, 1, 6, 5, "ZONE_02", 520], ["L0547", 16.52412, 80.46477, 37.9, "Lower", "Good", 13, 3, 1, 3, "ZONE_20", 521], ["L0613", 16.38301, 80.48672, 37.9, "Lower", "Fair", 10, 4, 2, 3, "ZONE_05", 522], ["L0672", 16.41186, 80.48736, 37.9, "Lower", "Poor", 6, 1, 0, 7, "ZONE_12", 523], ["L0457", 16.47486, 80.46075, 37.8, "Lower", "Critical", 9, 3, 4, 1, "ZONE_11", 524], ["L0501", 16.53818, 80.39882, 37.8, "Lower", "Fair", 11, 2, 1, 4, "ZONE_17", 525], ["L0510", 16.44191, 80.39773, 37.8, "Lower", "Fair", 13, 4, 1, 1, "ZONE_08", 526], ["L0629", 16.51434, 80.38725, 37.8, "Lower", "Poor", 9, 1, 1, 4, "ZONE_17", 527], ["L0759", 16.44766, 80.50239, 37.7, "Lower", "Fair", 11, 2, 1, 3, "ZONE_11", 528], ["L0149", 16.42054, 80.54846, 37.6, "Lower", "Poor", 9, 2, 3, 3, "ZONE_14", 529], ["L0170", 16.48398, 80.58271, 37.6, "Lower", "Good", 11, 4, 1, 3, "ZONE_06", 530], ["L0236", 16.40332, 80.58705, 37.6, "Lower", "Poor", 10, 3, 4, 2, "ZONE_16", 531], ["L0408", 16.36728, 80.42244, 37.6, "Lower", "Poor", 10, 0, 2, 4, "ZONE_15", 532], ["L0222", 16.57459, 80.44021, 37.5, "Lower", "Fair", 9, 2, 1, 7, "ZONE_03", 533], ["L0225", 16.49551, 80.45541, 37.5, "Lower", "Good", 10, 1, 5, 4, "ZONE_01", 534], ["L0776", 16.48581, 80.56424, 37.5, "Lower", "Fair", 7, 2, 1, 7, "ZONE_10", 535], ["L0909", 16.50022, 80.51425, 37.5, "Lower", "Poor", 9, 1, 3, 3, "ZONE_04", 536], ["L0014", 16.35801, 80.64339, 37.4, "Lower", "Good", 8, 4, 1, 3, "ZONE_04", 537], ["L0599", 16.43341, 80.48162, 37.4, "Lower", "Good", 14, 1, 2, 2, "ZONE_12", 538], ["L0731", 16.53565, 80.45772, 37.4, "Lower", "Poor", 9, 2, 3, 2, "ZONE_13", 539], ["L0893", 16.39024, 80.58514, 37.4, "Lower", "Fair", 10, 3, 2, 2, "ZONE_13", 540], ["L0902", 16.53481, 80.55934, 37.4, "Lower", "Fair", 10, 2, 1, 3, "ZONE_02", 541], ["L0994", 16.39284, 80.40262, 37.4, "Lower", "Fair", 10, 3, 3, 4, "ZONE_07", 542], ["L0867", 16.5061, 80.43947, 37.3, "Lower", "Good", 11, 4, 4, 2, "ZONE_12", 543], ["L0346", 16.54297, 80.48127, 37.2, "Lower", "Fair", 11, 3, 2, 4, "ZONE_02", 544], ["L0426", 16.50927, 80.51913, 37.2, "Lower", "Good", 11, 2, 3, 2, "ZONE_01", 545], ["L0777", 16.54484, 80.37179, 37.2, "Lower", "Poor", 9, 2, 4, 4, "ZONE_06", 546], ["L0852", 16.3818, 80.56761, 37.2, "Lower", "Critical", 8, 3, 1, 3, "ZONE_01", 547], ["L0930", 16.52394, 80.54097, 37.2, "Lower", "Fair", 9, 1, 3, 3, "ZONE_15", 548], ["L0414", 16.48821, 80.44324, 37.1, "Lower", "Poor", 6, 2, 1, 6, "ZONE_08", 549], ["L0526", 16.50124, 80.65658, 37.1, "Lower", "Fair", 9, 7, 0, 3, "ZONE_05", 550], ["L0626", 16.36924, 80.55619, 37.1, "Lower", "Good", 10, 2, 0, 5, "ZONE_18", 551], ["L0977", 16.50875, 80.63748, 37.1, "Lower", "Fair", 10, 4, 0, 2, "ZONE_19", 552], ["L0058", 16.54027, 80.47543, 37.0, "Lower", "Poor", 6, 2, 2, 7, "ZONE_17", 553], ["L0059", 16.49467, 80.4994, 37.0, "Lower", "Fair", 8, 2, 4, 4, "ZONE_14", 554], ["L0159", 16.54716, 80.36286, 37.0, "Lower", "Good", 10, 2, 4, 6, "ZONE_15", 555], ["L0175", 16.27214, 80.43321, 37.0, "Lower", "Fair", 8, 4, 1, 1, "ZONE_20", 556], ["L0360", 16.34412, 80.44503, 37.0, "Lower", "Poor", 11, 3, 3, 2, "ZONE_15", 557], ["L0035", 16.59069, 80.57758, 36.9, "Lower", "Good", 11, 2, 1, 3, "ZONE_01", 558], ["L0299", 16.37241, 80.49223, 36.9, "Lower", "Poor", 7, 2, 1, 6, "ZONE_20", 559], ["L0317", 16.33863, 80.57098, 36.9, "Lower", "Poor", 12, 1, 2, 2, "ZONE_19", 560], ["L0540", 16.41819, 80.60985, 36.8, "Lower", "Poor", 13, 2, 2, 1, "ZONE_12", 561], ["L0698", 16.45584, 80.4347, 36.8, "Lower", "Critical", 8, 3, 4, 3, "ZONE_13", 562], ["L0297", 16.30587, 80.43024, 36.7, "Lower", "Critical", 8, 2, 1, 4, "ZONE_09", 563], ["L0490", 16.40454, 80.47895, 36.7, "Lower", "Fair", 8, 0, 1, 7, "ZONE_12", 564], ["L0587", 16.26149, 80.45113, 36.7, "Lower", "Poor", 10, 4, 1, 3, "ZONE_18", 565], ["L0609", 16.42977, 80.45916, 36.7, "Lower", "Fair", 13, 1, 1, 0, "ZONE_19", 566], ["L0622", 16.41972, 80.49951, 36.7, "Lower", "Fair", 11, 4, 3, 3, "ZONE_11", 567], ["L0912", 16.52423, 80.60017, 36.7, "Lower", "Poor", 9, 1, 2, 2, "ZONE_03", 568], ["L0064", 16.59141, 80.50226, 36.6, "Lower", "Poor", 7, 1, 3, 6, "ZONE_10", 569], ["L0813", 16.49058, 80.36194, 36.6, "Lower", "Fair", 10, 5, 1, 2, "ZONE_09", 570], ["L0165", 16.38855, 80.57469, 36.5, "Lower", "Poor", 9, 1, 2, 4, "ZONE_04", 571], ["L0267", 16.39175, 80.50346, 36.5, "Lower", "Fair", 9, 2, 4, 5, "ZONE_05", 572], ["L0446", 16.43716, 80.37484, 36.5, "Lower", "Poor", 7, 2, 2, 3, "ZONE_15", 573], ["L0584", 16.4604, 80.4801, 36.5, "Lower", "Fair", 9, 4, 0, 5, "ZONE_04", 574], ["L0602", 16.65173, 80.41334, 36.5, "Lower", "Good", 13, 3, 2, 1, "ZONE_03", 575], ["L0636", 16.38671, 80.38773, 36.5, "Lower", "Good", 7, 3, 5, 7, "ZONE_08", 576], ["L0811", 16.41279, 80.42424, 36.5, "Lower", "Critical", 9, 2, 1, 2, "ZONE_11", 577], ["L0874", 16.35496, 80.48101, 36.5, "Lower", "Poor", 7, 1, 1, 4, "ZONE_10", 578], ["L0498", 16.5782, 80.57884, 36.4, "Lower", "Fair", 10, 2, 4, 3, "ZONE_19", 579], ["L0637", 16.49321, 80.48205, 36.4, "Lower", "Poor", 6, 3, 4, 2, "ZONE_07", 580], ["L0102", 16.33498, 80.57196, 36.3, "Lower", "Poor", 9, 1, 1, 4, "ZONE_04", 581], ["L0131", 16.51093, 80.52763, 36.3, "Lower", "Fair", 7, 2, 1, 5, "ZONE_09", 582], ["L0516", 16.23579, 80.41072, 36.3, "Lower", "Poor", 9, 2, 1, 2, "ZONE_14", 583], ["L0082", 16.40752, 80.60185, 36.2, "Lower", "Fair", 7, 2, 5, 3, "ZONE_19", 584], ["L0227", 16.49261, 80.56734, 36.2, "Lower", "Fair", 8, 3, 5, 3, "ZONE_18", 585], ["L0255", 16.39948, 80.59588, 36.2, "Lower", "Poor", 6, 3, 5, 3, "ZONE_04", 586], ["L0730", 16.49954, 80.49841, 36.2, "Lower", "Poor", 8, 3, 0, 3, "ZONE_05", 587], ["L0568", 16.5234, 80.44682, 36.1, "Lower", "Fair", 10, 4, 1, 5, "ZONE_04", 588], ["L0805", 16.46241, 80.39927, 36.1, "Lower", "Fair", 10, 1, 1, 5, "ZONE_20", 589], ["L0862", 16.4521, 80.51107, 36.1, "Lower", "Good", 11, 4, 4, 4, "ZONE_01", 590], ["L0969", 16.3969, 80.43027, 36.1, "Lower", "Good", 8, 2, 3, 6, "ZONE_09", 591], ["L0044", 16.62171, 80.50829, 35.9, "Lower", "Fair", 9, 3, 1, 2, "ZONE_06", 592], ["L0172", 16.50341, 80.49738, 35.9, "Lower", "Fair", 11, 2, 1, 4, "ZONE_11", 593], ["L0271", 16.51238, 80.54256, 35.9, "Lower", "Poor", 7, 6, 0, 1, "ZONE_15", 594], ["L0338", 16.47622, 80.4671, 35.9, "Lower", "Fair", 9, 2, 2, 6, "ZONE_13", 595], ["L0352", 16.56229, 80.57028, 35.9, "Lower", "Poor", 11, 1, 4, 2, "ZONE_07", 596], ["L0392", 16.5035, 80.47954, 35.9, "Lower", "Fair", 11, 2, 0, 3, "ZONE_03", 597], ["L0002", 16.38439, 80.42982, 35.8, "Lower", "Poor", 6, 1, 2, 3, "ZONE_14", 598], ["L0598", 16.52352, 80.54264, 35.8, "Lower", "Fair", 9, 1, 0, 6, "ZONE_04", 599], ["L0660", 16.51367, 80.67257, 35.8, "Lower", "Fair", 6, 2, 0, 7, "ZONE_18", 600], ["L0700", 16.20369, 80.44225, 35.8, "Lower", "Poor", 10, 2, 3, 1, "ZONE_09", 601], ["L0153", 16.41573, 80.55244, 35.7, "Lower", "Fair", 10, 3, 1, 2, "ZONE_05", 602], ["L0239", 16.43241, 80.51738, 35.7, "Lower", "Fair", 9, 1, 3, 5, "ZONE_11", 603], ["L0474", 16.52442, 80.63408, 35.7, "Lower", "Poor", 6, 2, 3, 2, "ZONE_06", 604], ["L0677", 16.39587, 80.4851, 35.7, "Lower", "Poor", 8, 3, 2, 2, "ZONE_16", 605], ["L0856", 16.41109, 80.50399, 35.7, "Lower", "Fair", 8, 1, 2, 2, "ZONE_01", 606], ["L0152", 16.30429, 80.50093, 35.6, "Lower", "Fair", 9, 2, 4, 5, "ZONE_12", 607], ["L0273", 16.45221, 80.44166, 35.6, "Lower", "Fair", 9, 3, 2, 2, "ZONE_03", 608], ["L0374", 16.49396, 80.51946, 35.6, "Lower", "Poor", 9, 1, 1, 4, "ZONE_13", 609], ["L0739", 16.44098, 80.54203, 35.6, "Lower", "Fair", 9, 5, 3, 2, "ZONE_08", 610], ["L0889", 16.40192, 80.52768, 35.5, "Lower", "Good", 8, 0, 2, 8, "ZONE_09", 611], ["L0148", 16.46828, 80.44905, 35.4, "Lower", "Good", 11, 2, 0, 3, "ZONE_15", 612], ["L0189", 16.45097, 80.56603, 35.4, "Lower", "Poor", 5, 4, 1, 5, "ZONE_16", 613], ["L0545", 16.32571, 80.55362, 35.4, "Lower", "Critical", 6, 2, 0, 3, "ZONE_14", 614], ["L0564", 16.37502, 80.53774, 35.4, "Lower", "Good", 11, 4, 2, 1, "ZONE_06", 615], ["L0589", 16.29786, 80.3619, 35.4, "Lower", "Fair", 10, 2, 2, 5, "ZONE_18", 616], ["L0455", 16.54216, 80.54801, 35.3, "Lower", "Good", 8, 3, 3, 4, "ZONE_10", 617], ["L0657", 16.40509, 80.4796, 35.3, "Lower", "Critical", 7, 1, 0, 4, "ZONE_09", 618], ["L0711", 16.4294, 80.46835, 35.3, "Lower", "Fair", 10, 1, 0, 6, "ZONE_17", 619], ["L0828", 16.47604, 80.49043, 35.3, "Lower", "Poor", 9, 2, 2, 3, "ZONE_19", 620], ["L0866", 16.37575, 80.51523, 35.3, "Lower", "Poor", 9, 4, 1, 2, "ZONE_20", 621], ["L0020", 16.40541, 80.29281, 35.2, "Lower", "Poor", 9, 1, 2, 3, "ZONE_11", 622], ["L0043", 16.48186, 80.52613, 35.2, "Lower", "Fair", 10, 1, 3, 2, "ZONE_11", 623], ["L0125", 16.41024, 80.42221, 35.2, "Lower", "Poor", 8, 4, 2, 4, "ZONE_12", 624], ["L0150", 16.50209, 80.57273, 35.2, "Lower", "Poor", 8, 1, 2, 4, "ZONE_01", 625], ["L0341", 16.60363, 80.55026, 35.2, "Lower", "Poor", 9, 4, 2, 2, "ZONE_15", 626], ["L0917", 16.42453, 80.50121, 35.2, "Lower", "Critical", 5, 2, 0, 4, "ZONE_06", 627], ["L0193", 16.53639, 80.46224, 35.1, "Lower", "Good", 6, 3, 3, 6, "ZONE_12", 628], ["L0287", 16.34178, 80.43388, 35.1, "Lower", "Good", 9, 4, 2, 2, "ZONE_11", 629], ["L0539", 16.50792, 80.50271, 35.1, "Lower", "Good", 8, 4, 2, 4, "ZONE_01", 630], ["L0635", 16.45462, 80.51026, 35.1, "Lower", "Fair", 8, 6, 1, 1, "ZONE_18", 631], ["L0961", 16.33995, 80.52206, 35.1, "Lower", "Critical", 4, 1, 1, 6, "ZONE_07", 632], ["L0667", 16.46597, 80.52307, 35.0, "Lower", "Fair", 7, 4, 3, 3, "ZONE_18", 633], ["L0715", 16.46165, 80.38233, 35.0, "Lower", "Fair", 7, 1, 2, 4, "ZONE_12", 634], ["L0910", 16.40188, 80.58782, 35.0, "Lower", "Poor", 8, 3, 3, 2, "ZONE_02", 635], ["L0097", 16.47438, 80.54244, 34.9, "Lower", "Good", 9, 2, 4, 5, "ZONE_04", 636], ["L0260", 16.42035, 80.48084, 34.9, "Lower", "Poor", 6, 2, 3, 6, "ZONE_08", 637], ["L0466", 16.47706, 80.487, 34.9, "Lower", "Good", 12, 2, 1, 4, "ZONE_06", 638], ["L0618", 16.45598, 80.5251, 34.9, "Lower", "Fair", 12, 1, 2, 2, "ZONE_04", 639], ["L0274", 16.55496, 80.46788, 34.8, "Lower", "Fair", 9, 2, 3, 4, "ZONE_01", 640], ["L0286", 16.4379, 80.63008, 34.8, "Lower", "Good", 13, 2, 3, 3, "ZONE_05", 641], ["L0535", 16.42545, 80.64009, 34.8, "Lower", "Fair", 13, 1, 0, 3, "ZONE_08", 642], ["L0103", 16.46231, 80.50338, 34.6, "Lower", "Fair", 9, 3, 0, 4, "ZONE_19", 643], ["L0376", 16.42935, 80.56709, 34.6, "Lower", "Poor", 7, 2, 0, 5, "ZONE_09", 644], ["L0379", 16.38099, 80.55665, 34.6, "Lower", "Good", 11, 2, 6, 1, "ZONE_07", 645], ["L0538", 16.36405, 80.33022, 34.6, "Lower", "Critical", 6, 3, 1, 2, "ZONE_12", 646], ["L0643", 16.48383, 80.54333, 34.6, "Lower", "Poor", 7, 1, 1, 5, "ZONE_02", 647], ["L0400", 16.49443, 80.49265, 34.5, "Lower", "Fair", 10, 2, 3, 4, "ZONE_17", 648], ["L0627", 16.46764, 80.50605, 34.5, "Lower", "Fair", 10, 1, 5, 1, "ZONE_03", 649], ["L0650", 16.36514, 80.61052, 34.5, "Lower", "Fair", 8, 2, 1, 5, "ZONE_16", 650], ["L0945", 16.6412, 80.32142, 34.5, "Lower", "Fair", 11, 5, 2, 2, "ZONE_11", 651], ["L0946", 16.4279, 80.51173, 34.5, "Lower", "Fair", 9, 4, 1, 4, "ZONE_06", 652], ["L0105", 16.30694, 80.61194, 34.4, "Lower", "Good", 9, 3, 5, 3, "ZONE_08", 653], ["L0171", 16.47755, 80.43409, 34.4, "Lower", "Poor", 9, 1, 0, 3, "ZONE_10", 654], ["L0252", 16.4813, 80.47574, 34.4, "Lower", "Good", 9, 2, 2, 4, "ZONE_20", 655], ["L0378", 16.46723, 80.41787, 34.4, "Lower", "Poor", 8, 4, 2, 2, "ZONE_11", 656], ["L0462", 16.48375, 80.47161, 34.4, "Lower", "Fair", 10, 3, 1, 2, "ZONE_05", 657], ["L0691", 16.51368, 80.44537, 34.4, "Lower", "Fair", 9, 2, 1, 4, "ZONE_05", 658], ["L0699", 16.46655, 80.60242, 34.4, "Lower", "Good", 10, 3, 0, 3, "ZONE_02", 659], ["L0742", 16.44272, 80.42206, 34.4, "Lower", "Fair", 6, 3, 3, 6, "ZONE_05", 660], ["L0301", 16.54644, 80.47971, 34.3, "Lower", "Poor", 8, 3, 1, 3, "ZONE_10", 661], ["L0117", 16.38074, 80.35487, 34.2, "Lower", "Poor", 6, 1, 3, 4, "ZONE_13", 662], ["L0483", 16.47099, 80.58746, 34.2, "Lower", "Critical", 6, 3, 1, 4, "ZONE_05", 663], ["L0507", 16.55888, 80.40454, 34.2, "Lower", "Fair", 10, 3, 4, 2, "ZONE_04", 664], ["L0717", 16.40657, 80.60254, 34.2, "Lower", "Fair", 7, 5, 3, 2, "ZONE_01", 665], ["L0188", 16.49763, 80.51193, 34.1, "Lower", "Fair", 8, 2, 1, 4, "ZONE_08", 666], ["L0310", 16.64225, 80.43857, 34.1, "Lower", "Poor", 8, 3, 2, 2, "ZONE_04", 667], ["L0944", 16.40707, 80.47221, 34.1, "Lower", "Fair", 9, 5, 2, 1, "ZONE_02", 668], ["L0080", 16.54883, 80.56281, 34.0, "Lower", "Good", 10, 4, 2, 1, "ZONE_03", 669], ["L0394", 16.29301, 80.40317, 34.0, "Lower", "Poor", 6, 2, 0, 3, "ZONE_13", 670], ["L0427", 16.56855, 80.5597, 34.0, "Lower", "Poor", 7, 2, 0, 2, "ZONE_01", 671], ["L0554", 16.56886, 80.64954, 34.0, "Lower", "Fair", 8, 3, 2, 4, "ZONE_03", 672], ["L0900", 16.48399, 80.52517, 34.0, "Lower", "Critical", 9, 4, 3, 1, "ZONE_11", 673], ["L0334", 16.44199, 80.55998, 33.9, "Lower", "Poor", 7, 0, 3, 3, "ZONE_02", 674], ["L0836", 16.65388, 80.46153, 33.9, "Lower", "Good", 12, 1, 5, 2, "ZONE_02", 675], ["L0009", 16.45541, 80.51133, 33.8, "Lower", "Good", 10, 2, 4, 3, "ZONE_08", 676], ["L0076", 16.50286, 80.47919, 33.8, "Lower", "Fair", 9, 3, 2, 4, "ZONE_13", 677], ["L0399", 16.32264, 80.34682, 33.8, "Lower", "Good", 10, 3, 3, 2, "ZONE_09", 678], ["L0486", 16.47279, 80.59038, 33.8, "Lower", "Good", 5, 2, 3, 10, "ZONE_02", 679], ["L0772", 16.52221, 80.34926, 33.8, "Lower", "Good", 12, 1, 2, 4, "ZONE_11", 680], ["L0077", 16.56065, 80.56903, 33.7, "Lower", "Good", 11, 3, 1, 3, "ZONE_14", 681], ["L0107", 16.37534, 80.50333, 33.7, "Lower", "Fair", 9, 2, 1, 4, "ZONE_11", 682], ["L0187", 16.38426, 80.54273, 33.7, "Lower", "Poor", 9, 1, 3, 2, "ZONE_12", 683], ["L0333", 16.3048, 80.51127, 33.7, "Lower", "Good", 8, 2, 2, 5, "ZONE_09", 684], ["L0687", 16.29418, 80.46346, 33.7, "Lower", "Fair", 8, 3, 0, 5, "ZONE_20", 685], ["L0090", 16.41471, 80.54477, 33.6, "Lower", "Fair", 11, 1, 1, 2, "ZONE_15", 686], ["L0787", 16.50014, 80.52738, 33.6, "Lower", "Good", 11, 4, 3, 4, "ZONE_12", 687], ["L0008", 16.38163, 80.54965, 33.5, "Lower", "Poor", 7, 1, 2, 5, "ZONE_14", 688], ["L0648", 16.53238, 80.50713, 33.5, "Lower", "Fair", 9, 2, 2, 4, "ZONE_20", 689], ["L0814", 16.63611, 80.60765, 33.5, "Lower", "Poor", 5, 2, 1, 5, "ZONE_08", 690], ["L0908", 16.63002, 80.48782, 33.5, "Lower", "Good", 8, 1, 1, 3, "ZONE_16", 691], ["L0932", 16.44773, 80.47706, 33.5, "Lower", "Good", 8, 4, 1, 6, "ZONE_09", 692], ["L0981", 16.36869, 80.39016, 33.4, "Lower", "Fair", 8, 0, 3, 4, "ZONE_07", 693], ["L0018", 16.48238, 80.52022, 33.3, "Lower", "Poor", 6, 0, 3, 4, "ZONE_14", 694], ["L0104", 16.49926, 80.43783, 33.3, "Lower", "Fair", 9, 2, 2, 2, "ZONE_14", 695], ["L0173", 16.57542, 80.53398, 33.3, "Lower", "Fair", 10, 3, 1, 2, "ZONE_04", 696], ["L0616", 16.41509, 80.54857, 33.3, "Lower", "Fair", 10, 2, 3, 3, "ZONE_18", 697], ["L0015", 16.44557, 80.55845, 33.2, "Lower", "Critical", 5, 3, 1, 3, "ZONE_03", 698], ["L0049", 16.36415, 80.46759, 33.2, "Lower", "Fair", 9, 3, 2, 4, "ZONE_11", 699], ["L0282", 16.53802, 80.4771, 33.2, "Lower", "Fair", 10, 2, 0, 3, "ZONE_07", 700], ["L0397", 16.48253, 80.58143, 33.2, "Lower", "Critical", 9, 1, 2, 2, "ZONE_13", 701], ["L0882", 16.53507, 80.54901, 33.2, "Lower", "Good", 13, 3, 0, 1, "ZONE_02", 702], ["L0244", 16.50229, 80.60456, 33.1, "Lower", "Fair", 7, 3, 2, 3, "ZONE_05", 703], ["L0295", 16.3708, 80.46531, 33.1, "Lower", "Fair", 8, 2, 2, 2, "ZONE_09", 704], ["L0435", 16.35337, 80.57127, 33.1, "Lower", "Poor", 7, 2, 2, 2, "ZONE_05", 705], ["L0019", 16.51138, 80.49334, 33.0, "Lower", "Poor", 7, 3, 3, 4, "ZONE_20", 706], ["L0279", 16.41012, 80.55268, 33.0, "Lower", "Poor", 7, 2, 2, 3, "ZONE_19", 707], ["L0689", 16.38904, 80.46856, 33.0, "Lower", "Poor", 10, 2, 3, 1, "ZONE_07", 708], ["L0004", 16.28954, 80.42675, 32.9, "Lower", "Poor", 4, 3, 1, 3, "ZONE_17", 709], ["L0032", 16.25382, 80.54358, 32.9, "Lower", "Fair", 8, 2, 1, 5, "ZONE_11", 710], ["L0323", 16.40439, 80.52581, 32.9, "Lower", "Good", 8, 2, 4, 6, "ZONE_18", 711], ["L0571", 16.41749, 80.73567, 32.9, "Lower", "Good", 8, 5, 2, 3, "ZONE_01", 712], ["L0456", 16.53236, 80.25821, 32.8, "Lower", "Good", 8, 4, 2, 4, "ZONE_12", 713], ["L0519", 16.36519, 80.49519, 32.8, "Lower", "Fair", 10, 4, 3, 2, "ZONE_19", 714], ["L0628", 16.44662, 80.5391, 32.8, "Lower", "Poor", 7, 3, 2, 1, "ZONE_07", 715], ["L0719", 16.58091, 80.50765, 32.8, "Lower", "Poor", 8, 1, 2, 2, "ZONE_12", 716], ["L0781", 16.48292, 80.54193, 32.8, "Lower", "Good", 8, 3, 0, 5, "ZONE_11", 717], ["L0905", 16.46137, 80.33183, 32.8, "Lower", "Poor", 9, 0, 1, 4, "ZONE_13", 718], ["L0938", 16.41794, 80.53669, 32.8, "Lower", "Fair", 6, 4, 1, 3, "ZONE_11", 719], ["L0123", 16.41703, 80.43971, 32.7, "Lower", "Fair", 7, 1, 0, 3, "ZONE_10", 720], ["L0196", 16.35902, 80.5636, 32.7, "Lower", "Poor", 5, 3, 1, 4, "ZONE_19", 721], ["L0476", 16.36931, 80.53359, 32.7, "Lower", "Fair", 9, 4, 0, 2, "ZONE_18", 722], ["L0178", 16.55358, 80.4816, 32.6, "Lower", "Poor", 9, 3, 3, 0, "ZONE_04", 723], ["L0197", 16.59908, 80.64643, 32.6, "Lower", "Fair", 8, 1, 5, 3, "ZONE_01", 724], ["L0254", 16.35365, 80.52877, 32.6, "Lower", "Fair", 8, 0, 4, 6, "ZONE_11", 725], ["L0387", 16.48818, 80.42174, 32.6, "Lower", "Good", 8, 5, 3, 1, "ZONE_09", 726], ["L0557", 16.55449, 80.57089, 32.6, "Lower", "Poor", 9, 4, 2, 1, "ZONE_05", 727], ["L0827", 16.33421, 80.5866, 32.6, "Lower", "Fair", 9, 2, 2, 5, "ZONE_08", 728], ["L0940", 16.51029, 80.56036, 32.6, "Lower", "Critical", 6, 1, 0, 5, "ZONE_09", 729], ["L0258", 16.34342, 80.46226, 32.5, "Lower", "Fair", 8, 1, 1, 5, "ZONE_06", 730], ["L0461", 16.44689, 80.52754, 32.5, "Lower", "Good", 7, 2, 4, 6, "ZONE_18", 731], ["L0518", 16.43903, 80.58796, 32.5, "Lower", "Good", 9, 2, 1, 3, "ZONE_18", 732], ["L0553", 16.40905, 80.515, 32.5, "Lower", "Fair", 10, 2, 2, 2, "ZONE_17", 733], ["L0789", 16.44436, 80.57325, 32.5, "Lower", "Fair", 10, 4, 4, 1, "ZONE_10", 734], ["L0875", 16.41523, 80.53977, 32.4, "Lower", "Fair", 9, 1, 1, 4, "ZONE_06", 735], ["L0216", 16.45978, 80.52803, 32.3, "Lower", "Good", 6, 3, 1, 5, "ZONE_13", 736], ["L0891", 16.33823, 80.45138, 32.3, "Lower", "Good", 10, 3, 4, 2, "ZONE_16", 737], ["L0278", 16.46175, 80.41192, 32.2, "Lower", "Poor", 6, 1, 0, 4, "ZONE_17", 738], ["L0779", 16.34757, 80.71933, 32.2, "Lower", "Critical", 6, 1, 2, 1, "ZONE_11", 739], ["L0979", 16.55208, 80.71361, 32.2, "Lower", "Good", 7, 1, 0, 7, "ZONE_14", 740], ["L0259", 16.42001, 80.52612, 32.1, "Lower", "Fair", 10, 3, 0, 2, "ZONE_05", 741], ["L0353", 16.41157, 80.54174, 32.1, "Lower", "Critical", 6, 2, 2, 4, "ZONE_18", 742], ["L0438", 16.56622, 80.62452, 32.1, "Lower", "Fair", 8, 1, 5, 5, "ZONE_05", 743], ["L0447", 16.52518, 80.5174, 32.1, "Lower", "Poor", 6, 3, 4, 4, "ZONE_20", 744], ["L0591", 16.40271, 80.30312, 32.1, "Lower", "Fair", 7, 1, 3, 5, "ZONE_01", 745], ["L0658", 16.54418, 80.51519, 32.1, "Lower", "Poor", 6, 3, 1, 3, "ZONE_16", 746], ["L0845", 16.28733, 80.51018, 32.1, "Lower", "Fair", 10, 3, 2, 2, "ZONE_20", 747], ["L0127", 16.58849, 80.43716, 32.0, "Lower", "Good", 9, 0, 4, 4, "ZONE_09", 748], ["L0407", 16.42842, 80.52411, 32.0, "Lower", "Fair", 9, 3, 3, 2, "ZONE_01", 749], ["L0653", 16.37542, 80.45865, 32.0, "Lower", "Poor", 8, 3, 2, 2, "ZONE_16", 750], ["L0870", 16.51628, 80.54411, 32.0, "Lower", "Fair", 10, 2, 3, 2, "ZONE_19", 751], ["L0101", 16.46042, 80.4278, 31.9, "Lower", "Good", 9, 3, 1, 4, "ZONE_04", 752], ["L0386", 16.48508, 80.46186, 31.9, "Lower", "Good", 9, 3, 2, 4, "ZONE_17", 753], ["L0448", 16.3879, 80.59536, 31.9, "Lower", "Good", 7, 3, 1, 4, "ZONE_12", 754], ["L0573", 16.49028, 80.39365, 31.9, "Lower", "Poor", 8, 3, 0, 3, "ZONE_12", 755], ["L0963", 16.5402, 80.56623, 31.9, "Lower", "Critical", 10, 1, 1, 1, "ZONE_03", 756], ["L0987", 16.38326, 80.43903, 31.9, "Lower", "Good", 9, 2, 1, 5, "ZONE_14", 757], ["L0417", 16.2952, 80.44147, 31.8, "Lower", "Good", 11, 3, 1, 2, "ZONE_06", 758], ["L0488", 16.42482, 80.43946, 31.8, "Lower", "Good", 11, 3, 4, 0, "ZONE_02", 759], ["L0522", 16.42593, 80.57673, 31.8, "Lower", "Good", 11, 0, 3, 1, "ZONE_04", 760], ["L0114", 16.62741, 80.45914, 31.7, "Lower", "Fair", 9, 1, 3, 2, "ZONE_01", 761], ["L0256", 16.43835, 80.56971, 31.6, "Lower", "Poor", 5, 3, 3, 2, "ZONE_18", 762], ["L0572", 16.33424, 80.54944, 31.6, "Lower", "Poor", 7, 0, 2, 6, "ZONE_16", 763], ["L0582", 16.52762, 80.43597, 31.6, "Lower", "Poor", 7, 3, 1, 2, "ZONE_09", 764], ["L0808", 16.42242, 80.52508, 31.6, "Lower", "Good", 7, 1, 3, 5, "ZONE_18", 765], ["L0860", 16.48281, 80.53981, 31.6, "Lower", "Poor", 8, 1, 4, 0, "ZONE_16", 766], ["L0053", 16.49862, 80.47906, 31.5, "Lower", "Poor", 8, 1, 3, 4, "ZONE_17", 767], ["L0768", 16.3952, 80.53597, 31.5, "Lower", "Fair", 9, 3, 1, 2, "ZONE_03", 768], ["L0815", 16.54267, 80.57349, 31.5, "Lower", "Fair", 8, 2, 0, 2, "ZONE_03", 769], ["L0478", 16.36136, 80.57463, 31.4, "Lower", "Fair", 9, 0, 3, 3, "ZONE_01", 770], ["L0022", 16.4867, 80.53644, 31.3, "Lower", "Fair", 7, 3, 2, 4, "ZONE_12", 771], ["L0224", 16.42334, 80.46435, 31.3, "Lower", "Critical", 6, 3, 6, 2, "ZONE_08", 772], ["L0291", 16.48643, 80.47976, 31.3, "Lower", "Fair", 5, 2, 0, 7, "ZONE_17", 773], ["L0953", 16.47547, 80.41734, 31.3, "Lower", "Good", 10, 2, 1, 4, "ZONE_10", 774], ["L0983", 16.51445, 80.55375, 31.3, "Lower", "Critical", 8, 1, 1, 1, "ZONE_08", 775], ["L0388", 16.36488, 80.46402, 31.2, "Lower", "Good", 10, 0, 2, 4, "ZONE_16", 776], ["L0010", 16.42276, 80.48431, 31.1, "Lower", "Good", 7, 2, 1, 7, "ZONE_13", 777], ["L0458", 16.39438, 80.57523, 31.1, "Lower", "Fair", 8, 2, 1, 2, "ZONE_05", 778], ["L0480", 16.34737, 80.45522, 31.1, "Lower", "Poor", 6, 1, 4, 4, "ZONE_02", 779], ["L0520", 16.43495, 80.49853, 31.1, "Lower", "Fair", 9, 2, 3, 2, "ZONE_11", 780], ["L0673", 16.44869, 80.43778, 31.1, "Lower", "Fair", 7, 2, 2, 4, "ZONE_17", 781], ["L0283", 16.48262, 80.60258, 31.0, "Lower", "Poor", 9, 2, 0, 3, "ZONE_05", 782], ["L0767", 16.45411, 80.54504, 31.0, "Lower", "Good", 9, 3, 0, 4, "ZONE_18", 783], ["L0445", 16.47377, 80.51833, 30.9, "Lower", "Fair", 8, 1, 4, 4, "ZONE_07", 784], ["L0615", 16.34845, 80.52528, 30.9, "Lower", "Fair", 9, 1, 4, 0, "ZONE_12", 785], ["L0868", 16.41017, 80.41343, 30.9, "Lower", "Critical", 6, 1, 1, 3, "ZONE_05", 786], ["L0040", 16.43714, 80.52643, 30.8, "Lower", "Fair", 8, 3, 2, 0, "ZONE_11", 787], ["L0415", 16.41636, 80.63298, 30.8, "Lower", "Fair", 9, 1, 3, 2, "ZONE_05", 788], ["L0464", 16.60432, 80.49026, 30.8, "Lower", "Fair", 8, 3, 0, 3, "ZONE_10", 789], ["L0911", 16.48403, 80.48515, 30.8, "Lower", "Poor", 7, 1, 0, 3, "ZONE_13", 790], ["L0036", 16.43546, 80.41446, 30.7, "Lower", "Poor", 8, 3, 1, 0, "ZONE_10", 791], ["L0782", 16.40858, 80.66355, 30.7, "Lower", "Poor", 8, 1, 3, 3, "ZONE_09", 792], ["L0818", 16.59009, 80.57989, 30.7, "Lower", "Good", 8, 3, 5, 2, "ZONE_16", 793], ["L0992", 16.36753, 80.5212, 30.7, "Lower", "Poor", 7, 3, 1, 1, "ZONE_07", 794], ["L0429", 16.45353, 80.54599, 30.5, "Lower", "Good", 10, 2, 2, 1, "ZONE_01", 795], ["L0098", 16.35236, 80.34349, 30.4, "Lower", "Fair", 5, 2, 2, 6, "ZONE_11", 796], ["L0395", 16.43263, 80.52283, 30.4, "Lower", "Fair", 9, 2, 2, 3, "ZONE_02", 797], ["L0976", 16.39785, 80.5667, 30.4, "Lower", "Critical", 6, 2, 1, 2, "ZONE_12", 798], ["L0233", 16.46606, 80.60708, 30.3, "Lower", "Good", 8, 2, 1, 4, "ZONE_16", 799], ["L0704", 16.52638, 80.50465, 30.3, "Lower", "Poor", 5, 2, 2, 4, "ZONE_11", 800], ["L0824", 16.36284, 80.35789, 30.3, "Lower", "Good", 9, 3, 1, 4, "ZONE_09", 801], ["L0890", 16.45914, 80.61389, 30.3, "Lower", "Good", 7, 2, 1, 4, "ZONE_08", 802], ["L0898", 16.35626, 80.4637, 30.3, "Lower", "Fair", 6, 2, 0, 5, "ZONE_11", 803], ["L0998", 16.43436, 80.32888, 30.3, "Lower", "Good", 6, 1, 0, 4, "ZONE_17", 804], ["L0121", 16.42065, 80.37128, 30.2, "Lower", "Good", 9, 1, 2, 3, "ZONE_03", 805], ["L0348", 16.60317, 80.47179, 30.2, "Lower", "Fair", 7, 3, 1, 2, "ZONE_19", 806], ["L0788", 16.46973, 80.38621, 30.2, "Lower", "Fair", 6, 1, 1, 6, "ZONE_07", 807], ["L0202", 16.45615, 80.48538, 30.1, "Lower", "Poor", 7, 1, 2, 5, "ZONE_04", 808], ["L0431", 16.36797, 80.50016, 30.1, "Lower", "Poor", 7, 3, 0, 2, "ZONE_06", 809], ["L0434", 16.34545, 80.39868, 30.1, "Lower", "Fair", 10, 2, 3, 2, "ZONE_03", 810], ["L0798", 16.35028, 80.37992, 30.1, "Lower", "Good", 9, 0, 2, 6, "ZONE_14", 811], ["L0984", 16.5338, 80.51377, 30.1, "Lower", "Fair", 6, 4, 0, 3, "ZONE_16", 812], ["L0665", 16.31021, 80.5173, 30.0, "Lower", "Good", 9, 5, 1, 2, "ZONE_18", 813], ["L0990", 16.34211, 80.51359, 30.0, "Lower", "Fair", 9, 1, 2, 2, "ZONE_16", 814], ["L0026", 16.44048, 80.50354, 29.9, "Lower", "Fair", 6, 2, 2, 4, "ZONE_01", 815], ["L0792", 16.43646, 80.46616, 29.8, "Lower", "Good", 8, 1, 0, 5, "ZONE_11", 816], ["L0793", 16.59766, 80.59011, 29.7, "Lower", "Fair", 8, 2, 1, 2, "ZONE_12", 817], ["L0830", 16.56262, 80.34988, 29.7, "Lower", "Fair", 10, 3, 0, 2, "ZONE_12", 818], ["L0895", 16.34856, 80.57753, 29.7, "Lower", "Poor", 7, 2, 0, 3, "ZONE_16", 819], ["L0269", 16.4952, 80.46318, 29.5, "Lower", "Fair", 9, 2, 3, 3, "ZONE_13", 820], ["L0411", 16.28031, 80.50086, 29.5, "Lower", "Poor", 8, 1, 1, 2, "ZONE_09", 821], ["L0632", 16.41592, 80.60805, 29.5, "Lower", "Fair", 7, 4, 2, 2, "ZONE_16", 822], ["L0725", 16.59174, 80.52871, 29.5, "Lower", "Critical", 5, 1, 0, 4, "ZONE_09", 823], ["L0265", 16.57717, 80.49403, 29.4, "Lower", "Poor", 10, 1, 2, 0, "ZONE_02", 824], ["L0617", 16.39314, 80.40709, 29.4, "Lower", "Fair", 8, 1, 4, 3, "ZONE_05", 825], ["L0733", 16.49896, 80.51402, 29.4, "Lower", "Good", 10, 1, 6, 3, "ZONE_04", 826], ["L0251", 16.2894, 80.57052, 29.3, "Lower", "Poor", 7, 0, 1, 4, "ZONE_09", 827], ["L0927", 16.47906, 80.40475, 29.3, "Lower", "Good", 10, 1, 1, 2, "ZONE_07", 828], ["L0068", 16.41031, 80.53998, 29.2, "Lower", "Good", 8, 4, 2, 1, "ZONE_17", 829], ["L0590", 16.4687, 80.51212, 29.2, "Lower", "Fair", 10, 1, 2, 0, "ZONE_13", 830], ["L0614", 16.42181, 80.4637, 29.2, "Lower", "Good", 8, 3, 2, 4, "ZONE_11", 831], ["L0683", 16.48675, 80.54834, 29.2, "Lower", "Fair", 3, 1, 0, 6, "ZONE_06", 832], ["L0956", 16.48417, 80.66314, 29.0, "Lower", "Fair", 7, 1, 0, 5, "ZONE_06", 833], ["L0246", 16.48925, 80.54663, 28.9, "Lower", "Fair", 10, 5, 1, 0, "ZONE_11", 834], ["L0302", 16.43214, 80.55506, 28.9, "Lower", "Poor", 7, 1, 3, 3, "ZONE_12", 835], ["L0761", 16.42821, 80.55403, 28.9, "Lower", "Fair", 8, 3, 3, 2, "ZONE_16", 836], ["L0709", 16.47282, 80.51237, 28.8, "Lower", "Good", 4, 1, 2, 6, "ZONE_08", 837], ["L0210", 16.4904, 80.59514, 28.7, "Lower", "Poor", 6, 2, 2, 2, "ZONE_16", 838], ["L0451", 16.39979, 80.67508, 28.7, "Lower", "Poor", 3, 3, 2, 3, "ZONE_15", 839], ["L0825", 16.463, 80.5004, 28.6, "Lower", "Good", 11, 0, 2, 2, "ZONE_08", 840], ["L0033", 16.53402, 80.61535, 28.5, "Lower", "Poor", 5, 1, 1, 4, "ZONE_20", 841], ["L0051", 16.42021, 80.46626, 28.5, "Lower", "Fair", 7, 1, 1, 1, "ZONE_09", 842], ["L0204", 16.44442, 80.41225, 28.5, "Lower", "Fair", 10, 1, 3, 2, "ZONE_18", 843], ["L0281", 16.49327, 80.39042, 28.5, "Lower", "Fair", 8, 3, 2, 3, "ZONE_17", 844], ["L0716", 16.40042, 80.47291, 28.5, "Lower", "Fair", 7, 2, 1, 3, "ZONE_07", 845], ["L0070", 16.33932, 80.5178, 28.4, "Lower", "Poor", 6, 1, 1, 3, "ZONE_08", 846], ["L0450", 16.46343, 80.46471, 28.4, "Lower", "Fair", 7, 3, 4, 2, "ZONE_04", 847], ["L0541", 16.43553, 80.51798, 28.4, "Lower", "Poor", 7, 0, 3, 2, "ZONE_14", 848], ["L0708", 16.59711, 80.58669, 28.4, "Lower", "Fair", 5, 0, 2, 5, "ZONE_15", 849], ["L0113", 16.485, 80.53575, 28.3, "Lower", "Poor", 9, 1, 3, 0, "ZONE_11", 850], ["L0262", 16.44104, 80.52351, 28.3, "Lower", "Fair", 10, 2, 0, 2, "ZONE_13", 851], ["L0843", 16.37526, 80.55015, 28.3, "Lower", "Good", 8, 3, 2, 2, "ZONE_06", 852], ["L0437", 16.57408, 80.39911, 28.2, "Lower", "Poor", 9, 0, 0, 3, "ZONE_15", 853], ["L0511", 16.3684, 80.514, 28.2, "Lower", "Fair", 9, 2, 0, 3, "ZONE_18", 854], ["L0056", 16.49488, 80.44408, 28.1, "Lower", "Poor", 5, 2, 0, 2, "ZONE_20", 855], ["L0177", 16.47021, 80.43926, 28.1, "Lower", "Fair", 6, 1, 2, 5, "ZONE_10", 856], ["L0773", 16.47476, 80.48078, 28.1, "Lower", "Poor", 7, 1, 0, 4, "ZONE_09", 857], ["L0947", 16.18603, 80.44314, 28.1, "Lower", "Fair", 6, 2, 1, 4, "ZONE_09", 858], ["L0951", 16.5705, 80.5646, 28.1, "Lower", "Fair", 6, 2, 1, 4, "ZONE_01", 859], ["L0692", 16.61548, 80.50258, 28.0, "Lower", "Good", 8, 1, 3, 2, "ZONE_06", 860], ["L0732", 16.37532, 80.27981, 28.0, "Lower", "Good", 5, 2, 2, 5, "ZONE_19", 861], ["L0844", 16.41661, 80.34848, 28.0, "Lower", "Poor", 3, 0, 1, 5, "ZONE_11", 862], ["L0989", 16.45295, 80.44645, 28.0, "Lower", "Fair", 10, 2, 2, 1, "ZONE_16", 863], ["L0321", 16.36818, 80.51995, 27.9, "Lower", "Fair", 4, 0, 1, 7, "ZONE_02", 864], ["L0702", 16.41018, 80.54109, 27.9, "Lower", "Good", 4, 1, 1, 5, "ZONE_07", 865], ["L0747", 16.39511, 80.51842, 27.8, "Lower", "Poor", 7, 3, 2, 2, "ZONE_19", 866], ["L0696", 16.49179, 80.65698, 27.7, "Lower", "Fair", 9, 1, 3, 2, "ZONE_04", 867], ["L0065", 16.30271, 80.39814, 27.6, "Lower", "Fair", 7, 2, 0, 4, "ZONE_12", 868], ["L0449", 16.47032, 80.58145, 27.6, "Lower", "Poor", 4, 1, 1, 5, "ZONE_04", 869], ["L0319", 16.3388, 80.53385, 27.5, "Lower", "Fair", 6, 1, 1, 3, "ZONE_14", 870], ["L0016", 16.4455, 80.48734, 27.4, "Lower", "Fair", 8, 3, 3, 1, "ZONE_08", 871], ["L0124", 16.34939, 80.55168, 27.4, "Lower", "Poor", 8, 1, 2, 2, "ZONE_08", 872], ["L0433", 16.49277, 80.57831, 27.4, "Lower", "Poor", 6, 2, 0, 2, "ZONE_17", 873], ["L0512", 16.38438, 80.36088, 27.4, "Lower", "Good", 7, 3, 2, 3, "ZONE_09", 874], ["L0748", 16.52636, 80.60711, 27.3, "Lower", "Good", 7, 2, 4, 2, "ZONE_05", 875], ["L0220", 16.3909, 80.48937, 27.2, "Lower", "Poor", 7, 1, 1, 0, "ZONE_13", 876], ["L0391", 16.34677, 80.474, 27.2, "Lower", "Good", 9, 0, 4, 2, "ZONE_15", 877], ["L0485", 16.37912, 80.65238, 27.2, "Lower", "Poor", 5, 1, 0, 5, "ZONE_01", 878], ["L0701", 16.5225, 80.37165, 27.2, "Lower", "Fair", 5, 1, 1, 5, "ZONE_04", 879], ["L0907", 16.34613, 80.44779, 27.2, "Lower", "Fair", 5, 2, 1, 5, "ZONE_18", 880], ["L0962", 16.44878, 80.53484, 27.2, "Lower", "Good", 9, 2, 2, 2, "ZONE_02", 881], ["L0746", 16.37695, 80.43824, 27.1, "Lower", "Fair", 7, 3, 2, 3, "ZONE_06", 882], ["L0803", 16.57107, 80.47852, 27.1, "Lower", "Poor", 4, 0, 1, 6, "ZONE_07", 883], ["L0819", 16.44783, 80.47264, 27.0, "Lower", "Poor", 7, 3, 0, 1, "ZONE_02", 884], ["L0887", 16.3622, 80.47692, 27.0, "Lower", "Poor", 7, 2, 1, 1, "ZONE_12", 885], ["L0707", 16.24129, 80.59425, 26.9, "Lower", "Good", 10, 1, 2, 3, "ZONE_18", 886], ["L0941", 16.32431, 80.47535, 26.9, "Lower", "Fair", 8, 1, 2, 2, "ZONE_08", 887], ["L0240", 16.40044, 80.47016, 26.8, "Lower", "Critical", 6, 1, 2, 1, "ZONE_11", 888], ["L0923", 16.55776, 80.63028, 26.8, "Lower", "Fair", 7, 2, 1, 3, "ZONE_18", 889], ["L0042", 16.39582, 80.5628, 26.7, "Lower", "Poor", 7, 0, 3, 3, "ZONE_15", 890], ["L0475", 16.45317, 80.54675, 26.7, "Lower", "Poor", 9, 0, 1, 3, "ZONE_05", 891], ["L0948", 16.52646, 80.59118, 26.7, "Lower", "Good", 9, 3, 1, 3, "ZONE_16", 892], ["L0559", 16.4777, 80.40121, 26.6, "Lower", "Poor", 6, 1, 3, 3, "ZONE_05", 893], ["L0745", 16.48464, 80.57663, 26.6, "Lower", "Fair", 5, 4, 1, 3, "ZONE_07", 894], ["L0786", 16.44961, 80.48265, 26.6, "Lower", "Fair", 6, 1, 1, 4, "ZONE_19", 895], ["L0816", 16.24002, 80.602, 26.5, "Lower", "Good", 8, 1, 0, 3, "ZONE_07", 896], ["L0088", 16.50995, 80.39895, 26.4, "Lower", "Good", 7, 3, 1, 2, "ZONE_12", 897], ["L0544", 16.47918, 80.35671, 26.4, "Lower", "Fair", 6, 0, 1, 4, "ZONE_05", 898], ["L0970", 16.47556, 80.45839, 26.3, "Lower", "Poor", 6, 1, 1, 3, "ZONE_15", 899], ["L0393", 16.45035, 80.471, 26.2, "Lower", "Good", 8, 2, 2, 2, "ZONE_16", 900], ["L0848", 16.60874, 80.43194, 26.2, "Lower", "Good", 6, 1, 2, 4, "ZONE_08", 901], ["L0537", 16.43307, 80.57575, 26.1, "Lower", "Poor", 4, 1, 1, 3, "ZONE_19", 902], ["L0574", 16.49609, 80.42896, 26.1, "Lower", "Fair", 6, 2, 1, 4, "ZONE_05", 903], ["L0588", 16.47759, 80.51382, 26.1, "Lower", "Good", 6, 2, 1, 4, "ZONE_06", 904], ["L0851", 16.4253, 80.37918, 26.1, "Lower", "Good", 7, 1, 1, 3, "ZONE_20", 905], ["L0897", 16.40286, 80.46302, 26.0, "Lower", "Fair", 7, 3, 2, 1, "ZONE_13", 906], ["L0601", 16.29438, 80.44872, 25.9, "Lower", "Poor", 4, 2, 0, 5, "ZONE_09", 907], ["L0831", 16.35876, 80.41111, 25.9, "Lower", "Poor", 3, 2, 0, 7, "ZONE_04", 908], ["L0142", 16.46526, 80.37748, 25.8, "Lower", "Poor", 4, 1, 1, 3, "ZONE_13", 909], ["L0331", 16.44689, 80.58929, 25.8, "Lower", "Good", 5, 1, 0, 4, "ZONE_07", 910], ["L0722", 16.40818, 80.41809, 25.8, "Lower", "Fair", 4, 2, 0, 6, "ZONE_16", 911], ["L0050", 16.5223, 80.53289, 25.7, "Lower", "Poor", 5, 0, 0, 5, "ZONE_14", 912], ["L0579", 16.34217, 80.36171, 25.7, "Lower", "Fair", 6, 1, 2, 2, "ZONE_20", 913], ["L0290", 16.56121, 80.46443, 25.3, "Lower", "Good", 5, 2, 1, 4, "ZONE_17", 914], ["L0639", 16.39392, 80.46657, 25.3, "Lower", "Good", 7, 2, 3, 1, "ZONE_14", 915], ["L0401", 16.21102, 80.50484, 25.2, "Lower", "Poor", 6, 2, 1, 1, "ZONE_04", 916], ["L0807", 16.37812, 80.50979, 25.2, "Lower", "Fair", 5, 2, 1, 4, "ZONE_16", 917], ["L0182", 16.47061, 80.52914, 25.1, "Lower", "Poor", 5, 2, 3, 1, "ZONE_17", 918], ["L0266", 16.4616, 80.46137, 25.0, "Lower", "Fair", 5, 0, 1, 5, "ZONE_16", 919], ["L0837", 16.37387, 80.48713, 25.0, "Lower", "Good", 6, 1, 1, 5, "ZONE_14", 920], ["L0840", 16.6393, 80.60969, 25.0, "Lower", "Good", 7, 0, 2, 3, "ZONE_02", 921], ["L0834", 16.50204, 80.59032, 24.9, "Lower", "Fair", 10, 1, 2, 0, "ZONE_11", 922], ["L0023", 16.36393, 80.4764, 24.8, "Lower", "Good", 8, 2, 0, 4, "ZONE_17", 923], ["L0320", 16.41502, 80.5023, 24.7, "Lower", "Critical", 5, 1, 0, 2, "ZONE_16", 924], ["L0542", 16.46015, 80.67228, 24.7, "Lower", "Fair", 8, 2, 2, 3, "ZONE_12", 925], ["L0832", 16.34244, 80.56189, 24.7, "Lower", "Fair", 6, 3, 1, 2, "ZONE_05", 926], ["L0275", 16.38629, 80.52596, 24.6, "Lower", "Good", 7, 1, 5, 1, "ZONE_01", 927], ["L0684", 16.28363, 80.50114, 24.6, "Lower", "Poor", 6, 2, 0, 1, "ZONE_08", 928], ["L0441", 16.47236, 80.45107, 24.5, "Lower", "Fair", 9, 0, 0, 2, "ZONE_19", 929], ["L0640", 16.37363, 80.51153, 24.5, "Lower", "Fair", 6, 0, 2, 5, "ZONE_13", 930], ["L0238", 16.43951, 80.59258, 24.4, "Lower", "Good", 8, 5, 2, 0, "ZONE_15", 931], ["L0922", 16.52866, 80.53612, 24.4, "Lower", "Fair", 8, 3, 2, 1, "ZONE_06", 932], ["L0129", 16.54095, 80.61062, 24.3, "Lower", "Good", 6, 3, 1, 3, "ZONE_16", 933], ["L0513", 16.30633, 80.59907, 24.3, "Lower", "Good", 10, 0, 2, 2, "ZONE_19", 934], ["L0839", 16.55054, 80.43476, 24.1, "Lower", "Fair", 6, 0, 1, 4, "ZONE_20", 935], ["L0575", 16.47238, 80.53922, 24.0, "Lower", "Good", 5, 1, 1, 4, "ZONE_09", 936], ["L0025", 16.45624, 80.51277, 23.9, "Lower", "Fair", 4, 2, 1, 5, "ZONE_01", 937], ["L0307", 16.40488, 80.51738, 23.9, "Lower", "Good", 5, 3, 3, 3, "ZONE_15", 938], ["L0569", 16.57936, 80.46919, 23.7, "Lower", "Fair", 6, 2, 3, 3, "ZONE_06", 939], ["L0925", 16.41078, 80.46154, 23.7, "Lower", "Fair", 6, 2, 1, 2, "ZONE_07", 940], ["L0372", 16.46445, 80.53164, 23.5, "Lower", "Fair", 8, 0, 0, 2, "ZONE_09", 941], ["L0920", 16.40821, 80.61273, 23.5, "Lower", "Fair", 8, 0, 1, 2, "ZONE_02", 942], ["L0120", 16.43369, 80.39314, 23.4, "Lower", "Fair", 6, 3, 0, 2, "ZONE_12", 943], ["L0950", 16.30179, 80.41981, 23.4, "Lower", "Fair", 8, 1, 1, 2, "ZONE_03", 944], ["L0091", 16.36177, 80.34919, 23.3, "Lower", "Good", 8, 0, 3, 2, "ZONE_15", 945], ["L0135", 16.36698, 80.47681, 23.3, "Lower", "Good", 11, 1, 0, 2, "ZONE_06", 946], ["L0854", 16.536, 80.53304, 23.3, "Lower", "Poor", 2, 1, 1, 4, "ZONE_19", 947], ["L0993", 16.45964, 80.44926, 23.3, "Lower", "Good", 8, 2, 0, 1, "ZONE_10", 948], ["L0764", 16.35724, 80.44426, 23.2, "Lower", "Good", 7, 3, 2, 0, "ZONE_10", 949], ["L0470", 16.4243, 80.49112, 23.1, "Lower", "Good", 8, 1, 2, 3, "ZONE_19", 950], ["L0505", 16.3709, 80.33944, 23.1, "Lower", "Fair", 5, 1, 2, 1, "ZONE_12", 951], ["L0561", 16.52243, 80.43908, 23.1, "Lower", "Poor", 5, 2, 2, 1, "ZONE_18", 952], ["L0710", 16.46403, 80.47474, 23.1, "Lower", "Poor", 4, 3, 0, 1, "ZONE_11", 953], ["L0797", 16.47802, 80.5999, 23.1, "Lower", "Fair", 5, 2, 0, 3, "ZONE_16", 954], ["L0865", 16.39657, 80.50872, 23.1, "Lower", "Good", 6, 3, 2, 2, "ZONE_12", 955], ["L0027", 16.48448, 80.37649, 22.5, "Lower", "Fair", 6, 1, 0, 4, "ZONE_20", 956], ["L0213", 16.43254, 80.44738, 22.4, "Lower", "Good", 7, 1, 3, 0, "ZONE_14", 957], ["L0771", 16.4135, 80.39476, 22.4, "Lower", "Fair", 8, 3, 0, 1, "ZONE_09", 958], ["L0812", 16.42555, 80.55584, 22.4, "Lower", "Poor", 4, 2, 0, 3, "ZONE_05", 959], ["L0385", 16.38073, 80.36688, 22.0, "Lower", "Good", 3, 3, 1, 1, "ZONE_17", 960], ["L0633", 16.47066, 80.54597, 22.0, "Lower", "Good", 6, 1, 0, 4, "ZONE_05", 961], ["L0849", 16.50619, 80.61863, 22.0, "Lower", "Fair", 5, 2, 2, 2, "ZONE_17", 962], ["L0784", 16.47435, 80.32907, 21.9, "Lower", "Poor", 2, 2, 1, 3, "ZONE_03", 963], ["L0607", 16.47853, 80.52358, 21.7, "Lower", "Fair", 4, 1, 2, 2, "ZONE_05", 964], ["L0328", 16.45509, 80.43788, 21.6, "Lower", "Good", 6, 2, 2, 0, "ZONE_07", 965], ["L0108", 16.50686, 80.42283, 21.2, "Lower", "Good", 6, 0, 1, 4, "ZONE_10", 966], ["L0801", 16.47978, 80.62214, 21.2, "Lower", "Poor", 4, 1, 3, 2, "ZONE_09", 967], ["L0620", 16.42854, 80.46224, 21.0, "Lower", "Good", 6, 1, 1, 3, "ZONE_03", 968], ["L0166", 16.39613, 80.65237, 20.7, "Lower", "Good", 6, 1, 1, 0, "ZONE_06", 969], ["L0139", 16.35178, 80.38191, 20.6, "Lower", "Good", 5, 0, 0, 4, "ZONE_06", 970], ["L0778", 16.54508, 80.52726, 20.5, "Lower", "Fair", 4, 1, 0, 3, "ZONE_18", 971], ["L0055", 16.50925, 80.51604, 20.4, "Lower", "Good", 7, 0, 1, 2, "ZONE_19", 972], ["L0089", 16.51172, 80.40679, 20.4, "Lower", "Fair", 7, 1, 1, 0, "ZONE_08", 973], ["L0028", 16.45056, 80.54247, 20.3, "Lower", "Fair", 7, 0, 1, 2, "ZONE_14", 974], ["L0508", 16.48112, 80.37334, 20.2, "Lower", "Good", 4, 1, 2, 3, "ZONE_14", 975], ["L0697", 16.41946, 80.61697, 20.0, "Lower", "Good", 6, 1, 2, 1, "ZONE_11", 976], ["L0405", 16.57259, 80.5242, 19.8, "Lower", "Good", 6, 1, 3, 1, "ZONE_01", 977], ["L0007", 16.48227, 80.52487, 19.3, "Lower", "Fair", 4, 3, 2, 1, "ZONE_03", 978], ["L0155", 16.36543, 80.42728, 19.2, "Lower", "Fair", 7, 1, 0, 1, "ZONE_06", 979], ["L0203", 16.59516, 80.48414, 19.2, "Lower", "Fair", 7, 2, 2, 1, "ZONE_13", 980], ["L0134", 16.46061, 80.63844, 18.9, "Lower", "Fair", 5, 1, 0, 1, "ZONE_14", 981], ["L0200", 16.44223, 80.43729, 18.8, "Lower", "Good", 7, 2, 1, 2, "ZONE_06", 982], ["L0198", 16.41177, 80.37125, 18.4, "Lower", "Fair", 5, 1, 1, 1, "ZONE_20", 983], ["L0261", 16.4041, 80.51922, 18.4, "Lower", "Poor", 7, 1, 1, 0, "ZONE_03", 984], ["L0548", 16.59513, 80.58083, 18.3, "Lower", "Good", 7, 1, 0, 0, "ZONE_04", 985], ["L0596", 16.38087, 80.50697, 18.2, "Lower", "Good", 6, 0, 0, 2, "ZONE_02", 986], ["L0201", 16.47509, 80.515, 18.1, "Lower", "Fair", 6, 0, 0, 3, "ZONE_11", 987], ["L0383", 16.58812, 80.31021, 17.4, "Lower", "Good", 5, 2, 1, 2, "ZONE_08", 988], ["L0769", 16.40561, 80.55286, 17.4, "Lower", "Good", 5, 1, 1, 1, "ZONE_09", 989], ["L0649", 16.51493, 80.57531, 17.1, "Lower", "Good", 2, 1, 1, 5, "ZONE_19", 990], ["L0361", 16.46186, 80.47323, 17.0, "Lower", "Fair", 5, 0, 1, 1, "ZONE_11", 991], ["L0199", 16.40915, 80.42948, 16.7, "Lower", "Good", 5, 2, 1, 1, "ZONE_20", 992], ["L0357", 16.29205, 80.38232, 16.7, "Lower", "Good", 5, 1, 0, 2, "ZONE_05", 993], ["L0128", 16.39536, 80.60008, 16.5, "Lower", "Good", 4, 1, 1, 2, "ZONE_17", 994], ["L0580", 16.41507, 80.37954, 15.7, "Lower", "Good", 6, 1, 1, 0, "ZONE_10", 995], ["L0926", 16.51324, 80.59722, 15.1, "Lower", "Fair", 4, 0, 0, 2, "ZONE_15", 996], ["L0428", 16.49164, 80.49803, 14.9, "Lower", "Fair", 5, 0, 0, 1, "ZONE_13", 997], ["L0335", 16.42202, 80.37226, 13.9, "Lower", "Good", 5, 2, 0, 2, "ZONE_08", 998], ["L0871", 16.31459, 80.45697, 13.9, "Lower", "Fair", 3, 0, 0, 1, "ZONE_05", 999], ["L0705", 16.30917, 80.53513, 13.8, "Lower", "Fair", 4, 0, 0, 2, "ZONE_12", 1000]];
+
+const ZONE_STATS = [
+  {zone:"ZONE_01",locs:53,avg_score:46.4,avg_inc:10.0,avg_unres:2.9,pct_poor_crit:38},
+  {zone:"ZONE_02",locs:48,avg_score:45.3,avg_inc:9.8,avg_unres:2.7,pct_poor_crit:38},
+  {zone:"ZONE_03",locs:50,avg_score:47.3,avg_inc:10.2,avg_unres:3.0,pct_poor_crit:40},
+  {zone:"ZONE_04",locs:51,avg_score:45.8,avg_inc:9.8,avg_unres:2.8,pct_poor_crit:39},
+  {zone:"ZONE_05",locs:53,avg_score:46.4,avg_inc:10.3,avg_unres:2.9,pct_poor_crit:36},
+  {zone:"ZONE_06",locs:50,avg_score:46.8,avg_inc:10.0,avg_unres:2.9,pct_poor_crit:36},
+  {zone:"ZONE_07",locs:48,avg_score:46.2,avg_inc:10.3,avg_unres:2.9,pct_poor_crit:35},
+  {zone:"ZONE_08",locs:49,avg_score:45.7,avg_inc:9.6,avg_unres:2.8,pct_poor_crit:39},
+  {zone:"ZONE_09",locs:46,avg_score:47.3,avg_inc:10.4,avg_unres:3.0,pct_poor_crit:41},
+  {zone:"ZONE_10",locs:50,avg_score:46.1,avg_inc:9.8,avg_unres:2.9,pct_poor_crit:38},
+  {zone:"ZONE_11",locs:65,avg_score:46.3,avg_inc:9.9,avg_unres:2.8,pct_poor_crit:40},
+  {zone:"ZONE_12",locs:54,avg_score:46.6,avg_inc:10.0,avg_unres:2.8,pct_poor_crit:42},
+  {zone:"ZONE_13",locs:53,avg_score:45.7,avg_inc:9.7,avg_unres:2.7,pct_poor_crit:57},
+  {zone:"ZONE_14",locs:49,avg_score:46.4,avg_inc:9.8,avg_unres:2.8,pct_poor_crit:44},
+  {zone:"ZONE_15",locs:50,avg_score:47.2,avg_inc:10.4,avg_unres:2.9,pct_poor_crit:42},
+  {zone:"ZONE_16",locs:48,avg_score:45.9,avg_inc:9.7,avg_unres:2.7,pct_poor_crit:43},
+  {zone:"ZONE_17",locs:48,avg_score:46.0,avg_inc:9.9,avg_unres:2.8,pct_poor_crit:42},
+  {zone:"ZONE_18",locs:46,avg_score:47.3,avg_inc:10.4,avg_unres:2.9,pct_poor_crit:41},
+  {zone:"ZONE_19",locs:43,avg_score:46.2,avg_inc:10.0,avg_unres:2.8,pct_poor_crit:41},
+  {zone:"ZONE_20",locs:62,avg_score:46.7,avg_inc:9.9,avg_unres:2.8,pct_poor_crit:40}
+];
+
+const MONTH_INC = [862, 758, 858, 843, 838, 799, 853, 846, 859, 842, 840, 802];
+const MONTH_COMP = [702, 615, 666, 649, 667, 649, 687, 715, 640, 725, 648, 637];
+
+// ===== SIDEBAR CLOSE / COLLAPSE FEATURE =====
+function toggleSidebar() {
+  document.body.classList.toggle('sidebar-collapsed');
+  const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+  localStorage.setItem('metrix_sidebar_collapsed', isCollapsed ? '1' : '0');
+  
+  const innerIcon = document.getElementById('sidebar-icon-inner');
+  if (innerIcon) innerIcon.textContent = isCollapsed ? 'chevron_right' : 'menu_open';
+  
+  const topbarIcon = document.getElementById('topbar-toggle-icon');
+  if (topbarIcon) topbarIcon.textContent = isCollapsed ? 'menu_open' : 'menu';
+
+  // Resize map tiles smoothly
+  if (window.map) {
+    setTimeout(() => { window.map.invalidateSize(); }, 280);
+  }
+}
+
+// Restore saved sidebar preference
+if (localStorage.getItem('metrix_sidebar_collapsed') === '1') {
+  document.body.classList.add('sidebar-collapsed');
+  const innerIcon = document.getElementById('sidebar-icon-inner');
+  if (innerIcon) innerIcon.textContent = 'chevron_right';
+  const topbarIcon = document.getElementById('topbar-toggle-icon');
+  if (topbarIcon) topbarIcon.textContent = 'menu_open';
+}
+
+// ===== HELPERS =====
+function roadBadge(c){
+  const m={Critical:'road-critical',Poor:'road-poor',Fair:'road-fair',Good:'road-good'};
+  return `<span class="badge ${m[c]||''}">${c.toUpperCase()}</span>`;
+}
+function tierBadge(s){
+  if(s>=60) return '<span class="badge badge-high">HIGH</span>';
+  if(s>=40) return '<span class="badge badge-mod">MOD</span>';
+  return '<span class="badge badge-lower">LOWER</span>';
+}
+function driver(loc){
+  if(loc.road_condition==='Critical') return '🛣️ Critical road surface';
+  if(loc.total_injuries>=7) return '🚑 High injury count (' + loc.total_injuries + ')';
+  if(loc.crit_inc>=2) return '⚠️ Multiple critical incidents';
+  if(loc.unresolved>=6) return '📋 High unresolved backlog';
+  if(loc.high_inc>=6) return '⚡ Many High-severity incidents';
+  if(loc.active_comp>=7) return '💬 High active complaints backlog';
+  if(loc.near_school===1&&loc.pedestrian_activity==='High') return '🏫 School zone + High foot traffic';
+  return '📊 Compounding risk factors';
+}
+function recommendIntervention(loc){
+  if(loc.road_condition==='Critical' && loc.total_injuries>=6) {
+    return 'Urgent pavement resurfacing, geometric re-alignment & traffic-calming safety barriers.';
+  }
+  if(loc.road_condition==='Critical') {
+    return 'High-priority full road surface rehabilitation and structural base repair.';
+  }
+  if(loc.unresolved>=5) {
+    return 'Dispatch dedicated municipal remediation team to eliminate persistent backlog.';
+  }
+  if(loc.total_injuries>=6) {
+    return 'Deploy automated speed enforcement & enhance intersection lighting and signage.';
+  }
+  if(loc.active_comp>=6) {
+    return 'Civil engineering field audit to investigate recurrent citizen drainage & pothole complaints.';
+  }
+  return 'Routine preventive maintenance & scheduled quarterly infrastructure review.';
+}
+
+// ===== RENDER OVERVIEW ROWS =====
+function renderOverviewRows(){
+  const t=document.getElementById('overview-rows');
+  t.innerHTML=TOP31.slice(0,8).map(loc=>`
+    <tr class="data-row" onclick="viewLocationOnMap('${loc.location_id}')">
+      <td class="label-md" style="color:#8d937f;">${loc.rank}</td>
+      <td><div class="label-lg" style="color:#b9f36a;">${loc.location_id}</div><div class="label-sm" style="color:#8d937f;font-size:.6rem;">${loc.zone} · ${loc.road_type}</div></td>
+      <td><div style="display:flex;align-items:center;gap:6px;"><span class="sg" style="font-size:1rem;font-weight:700;color:#e0e2ea;">${loc.score}</span>${tierBadge(loc.score)}</div><div class="score-bar" style="width:${loc.score}%;margin-top:3px;"></div></td>
+      <td>${roadBadge(loc.road_condition)}</td>
+      <td class="label-md" style="color:#e0e2ea;">${loc.incident_count} <span style="color:#8d937f;">(${loc.unresolved} unres)</span></td>
+      <td class="label-md" style="color:${loc.total_injuries>=5?'#ffb3af':'#e0e2ea'};">${loc.total_injuries}</td>
+      <td class="label-sm" style="color:#c3c9b3;max-width:200px;white-space:normal;">${driver(loc)}</td>
+      <td><button onclick="event.stopPropagation();viewLocationOnMap('${loc.location_id}')" style="background:#262a30;border:1px solid #1c2025;color:#b9f36a;font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-weight:700;">MAP ↗</button></td>
+    </tr>
+  `).join('');
+}
+
+// ===== RENDER WORKLIST =====
+function renderWorklist(){
+  const t=document.getElementById('worklist-rows');
+  t.innerHTML=TOP31.map(loc=>`
+    <tr class="data-row" onclick="viewLocationOnMap('${loc.location_id}')">
+      <td class="label-md" style="color:#8d937f;">${loc.rank}</td>
+      <td><div class="label-lg" style="color:#b9f36a;">${loc.location_id}</div><div class="label-sm" style="color:#8d937f;font-size:.6rem;">${loc.road_type}</div></td>
+      <td class="label-md" style="color:#e0e2ea;">${loc.zone}</td>
+      <td><div style="display:flex;align-items:center;gap:6px;"><span class="sg" style="font-size:1rem;font-weight:700;color:#e0e2ea;">${loc.score}</span>${tierBadge(loc.score)}</div></td>
+      <td>${roadBadge(loc.road_condition)}</td>
+      <td class="label-md" style="color:#e0e2ea;">${loc.incident_count}</td>
+      <td class="label-md" style="color:${loc.unresolved>=5?'#ffb3af':'#e0e2ea'};">${loc.unresolved}</td>
+      <td class="label-md" style="color:${loc.total_injuries>=5?'#ffb3af':'#e0e2ea'};">${loc.total_injuries}</td>
+      <td class="label-md" style="color:#e0e2ea;">${loc.active_comp}</td>
+      <td class="label-sm" style="color:#c3c9b3;max-width:180px;white-space:normal;">${driver(loc)}</td>
+      <td><button onclick="event.stopPropagation();viewLocationOnMap('${loc.location_id}')" style="background:#262a30;border:1px solid #1c2025;color:#ff5c5c;font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-weight:700;">LOCATE ↗</button></td>
+    </tr>
+  `).join('');
+}
+
+// ===== RENDER ZONES =====
+function renderZones(){
+  const sorted=[...ZONE_STATS].sort((a,b)=>b.avg_score-a.avg_score);
+  const t=document.getElementById('zone-rows');
+  t.innerHTML=sorted.map(z=>`
+    <tr class="data-row">
+      <td class="label-lg" style="color:#b9f36a;">${z.zone}</td>
+      <td class="label-md" style="color:#8d937f;">${z.locs}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="sg" style="font-size:.95rem;font-weight:700;color:#e0e2ea;">${z.avg_score.toFixed(1)}</span>
+          <div style="width:80px;height:5px;background:#1c2025;border-radius:99px;overflow:hidden;"><div style="width:${z.avg_score}%;height:100%;background:#b9f36a;border-radius:99px;"></div></div>
+        </div>
+      </td>
+      <td class="label-md" style="color:#e0e2ea;">${z.avg_inc.toFixed(1)}</td>
+      <td class="label-md" style="color:#e0e2ea;">${z.avg_unres.toFixed(1)}</td>
+      <td><span class="badge ${z.pct_poor_crit>=50?'road-critical':z.pct_poor_crit>=45?'road-poor':'road-fair'}">${z.pct_poor_crit}%</span></td>
+    </tr>
+  `).join('');
+}
+
+// ===== DEDICATED MAP & PROBLEM NAVIGATOR FEATURE =====
+let map = null;
+let markersLayer = null;
+let currentFilter = 'all';
+let currentDisplayMode = 'hotspots'; // 'hotspots' or 'city'
+let selectedLocationId = null;
+const locMarkerMap = {};
+
+function initMapIfNeeded() {
+  if (map) {
+    map.invalidateSize();
+    return;
+  }
+  
+  // Center on simulation coordinates: approx 16.45 N, 80.53 E
+  map = L.map('city-map', {
+    zoomControl: false,
+    attributionControl: false
+  }).setView([16.45, 80.53], 11);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // CartoDB Dark Matter tile layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  markersLayer = L.layerGroup().addTo(map);
+
+  renderProblemCards();
+  plotMarkers();
+}
+
+function plotMarkers() {
+  if (!markersLayer) return;
+  markersLayer.clearLayers();
+
+  if (currentDisplayMode === 'hotspots') {
+    // Plot top 31 hotspots
+    TOP31.forEach(loc => {
+      const isSelected = loc.location_id === selectedLocationId;
+      const marker = L.circleMarker([loc.latitude, loc.longitude], {
+        radius: isSelected ? 12 : 9,
+        color: '#ff5c5c',
+        weight: isSelected ? 3 : 2,
+        fillColor: '#ff5c5c',
+        fillOpacity: 0.85
+      });
+
+      marker.bindPopup(`
+        <div style="min-width:180px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <strong style="color:#b9f36a;font-family:'Space Grotesk',sans-serif;font-size:14px;">${loc.location_id}</strong>
+            <span class="badge badge-high">${loc.score}</span>
+          </div>
+          <div style="color:#c3c9b3;font-size:11px;margin-bottom:4px;">${loc.zone} · ${loc.road_condition} Road</div>
+          <div style="font-size:11px;color:#e0e2ea;margin-bottom:8px;">${driver(loc)}</div>
+          <button onclick="selectProblemCard('${loc.location_id}')" style="width:100%;background:#b9f36a;color:#101419;border:none;padding:4px 8px;border-radius:4px;font-weight:700;font-size:11px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">INSPECT DETAILS</button>
+        </div>
+      `);
+
+      marker.on('click', () => {
+        selectProblemCard(loc.location_id, false);
+      });
+
+      locMarkerMap[loc.location_id] = marker;
+      markersLayer.addLayer(marker);
+    });
+  } else {
+    // Plot citywide points
+    ALL_LOCS.forEach(pt => {
+      const [id, lat, lon, sc, tier, road, inc, unres, inj, act, z, rank] = pt;
+      const col = sc >= 60 ? '#ff5c5c' : sc >= 40 ? '#ffb955' : '#7cb9ff';
+      const rad = sc >= 60 ? 7 : 4;
+      const marker = L.circleMarker([lat, lon], {
+        radius: rad,
+        color: col,
+        weight: 1,
+        fillColor: col,
+        fillOpacity: sc >= 60 ? 0.9 : 0.6
+      });
+
+      marker.bindPopup(`
+        <div style="min-width:160px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <strong style="color:#b9f36a;">${id}</strong>
+            <span style="font-weight:700;color:${col};">${sc} (${tier})</span>
+          </div>
+          <div style="font-size:11px;color:#c3c9b3;">${z} · ${road}</div>
+          <div style="font-size:11px;color:#e0e2ea;">${inc} incidents · ${inj} injuries</div>
+        </div>
+      `);
+      markersLayer.addLayer(marker);
+    });
+  }
+}
+
+function renderProblemCards() {
+  const container = document.getElementById('prob-list');
+  const q = (document.getElementById('nav-search-input')?.value || '').trim().toUpperCase();
+
+  let list = TOP31.filter(loc => {
+    if (q && !loc.location_id.toUpperCase().includes(q) && !loc.zone.toUpperCase().includes(q)) return false;
+    if (currentFilter === 'critical_road' && loc.road_condition !== 'Critical') return false;
+    if (currentFilter === 'injuries' && loc.total_injuries < 5) return false;
+    if (currentFilter === 'unresolved' && loc.unresolved < 5) return false;
+    return true;
+  });
+
+  const countEl = document.getElementById('nav-counter');
+  if (countEl) countEl.textContent = `${list.length} Problems`;
+
+  if (list.length === 0) {
+    container.innerHTML = `<div style="padding:20px;text-align:center;color:#8d937f;font-size:.8rem;">No problems matching active filter</div>`;
+    return;
+  }
+
+  container.innerHTML = list.map(loc => `
+    <div class="prob-card ${loc.location_id === selectedLocationId ? 'active' : ''}" id="card-${loc.location_id}" onclick="selectProblemCard('${loc.location_id}', true)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="label-md" style="color:#8d937f;">#${loc.rank}</span>
+          <span class="sg" style="font-size:.95rem;font-weight:700;color:#fefff2;">${loc.location_id}</span>
+          <span class="label-sm" style="color:#8d937f;font-size:.65rem;">${loc.zone}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <span class="sg" style="font-size:.9rem;font-weight:700;color:#ff5c5c;">${loc.score}</span>
+          ${tierBadge(loc.score)}
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+        ${roadBadge(loc.road_condition)}
+        <span class="badge" style="background:#1c2025;color:#e0e2ea;border-color:#262a30;">${loc.incident_count} Incidents</span>
+        <span class="badge" style="background:#1c2025;color:${loc.unresolved >= 5 ? '#ffb3af' : '#c3c9b3'};border-color:#262a30;">${loc.unresolved} Unres</span>
+        <span class="badge" style="background:#1c2025;color:${loc.total_injuries >= 5 ? '#ffb3af' : '#c3c9b3'};border-color:#262a30;">${loc.total_injuries} Inj</span>
+      </div>
+
+      <div style="font-size:11px;color:#c3c9b3;line-height:1.3;">
+        ${driver(loc)}
+      </div>
+    </div>
+  `).join('');
+}
+
+function setNavFilter(filterName, btn) {
+  currentFilter = filterName;
+  document.querySelectorAll('.nav-filter-chip').forEach(b => {
+    b.style.background = '#181c21';
+    b.style.color = '#c3c9b3';
+    b.style.borderColor = '#262a30';
+  });
+  btn.style.background = '#262a30';
+  btn.style.color = '#b9f36a';
+  btn.style.borderColor = '#b9f36a';
+  renderProblemCards();
+}
+
+function filterProblemCards() {
+  renderProblemCards();
+}
+
+function selectProblemCard(locId, flyTo = true) {
+  selectedLocationId = locId;
+  const loc = TOP31.find(l => l.location_id === locId);
+  if (!loc) return;
+
+  // Highlight card
+  document.querySelectorAll('.prob-card').forEach(c => c.classList.remove('active'));
+  const card = document.getElementById(`card-${locId}`);
+  if (card) {
+    card.classList.add('active');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Open inspector
+  const insp = document.getElementById('floating-inspector');
+  if (insp) {
+    insp.style.display = 'block';
+    document.getElementById('insp-id').textContent = loc.location_id;
+    document.getElementById('insp-zone').textContent = `${loc.zone} · ${loc.road_type}`;
+    document.getElementById('insp-coords').textContent = `${loc.latitude.toFixed(5)}° N, ${loc.longitude.toFixed(5)}° E`;
+    document.getElementById('insp-score').textContent = loc.score;
+    document.getElementById('insp-road').textContent = `${loc.road_condition.toUpperCase()} ROAD`;
+    document.getElementById('insp-road').className = `badge ${loc.road_condition === 'Critical' ? 'road-critical' : 'road-poor'}`;
+    
+    document.getElementById('insp-c-inc').textContent = `${loc.comp_inc.toFixed(1)} / 20`;
+    document.getElementById('insp-c-burden').textContent = `${loc.comp_burden.toFixed(1)} / 25`;
+    document.getElementById('insp-c-unres').textContent = `${loc.comp_unres.toFixed(1)} / 15`;
+    document.getElementById('insp-c-road').textContent = `${loc.comp_road.toFixed(1)} / 10`;
+
+    document.getElementById('insp-inc').textContent = `${loc.incident_count} (${loc.crit_inc} Critical)`;
+    document.getElementById('insp-inj').textContent = `${loc.total_injuries} injuries reported`;
+    document.getElementById('insp-unres').textContent = `${loc.unresolved} unresolved`;
+    document.getElementById('insp-active').textContent = `${loc.active_comp} active complaints`;
+
+    document.getElementById('insp-rec').textContent = recommendIntervention(loc);
+  }
+
+  // Fly on map
+  if (flyTo && map) {
+    map.flyTo([loc.latitude, loc.longitude], 14, { duration: 0.8 });
+    const marker = locMarkerMap[locId];
+    if (marker) {
+      setTimeout(() => marker.openPopup(), 850);
+    }
+  }
+}
+
+function closeInspector() {
+  const insp = document.getElementById('floating-inspector');
+  if (insp) insp.style.display = 'none';
+  selectedLocationId = null;
+  document.querySelectorAll('.prob-card').forEach(c => c.classList.remove('active'));
+}
+
+function setMapDisplayMode(mode) {
+  currentDisplayMode = mode;
+  const btnHot = document.getElementById('btn-mode-hotspots');
+  const btnCity = document.getElementById('btn-mode-city');
+  if (mode === 'hotspots') {
+    btnHot.style.background = '#262a30';
+    btnHot.style.borderColor = '#ff5c5c';
+    btnHot.style.color = '#ff5c5c';
+    btnCity.style.background = 'transparent';
+    btnCity.style.borderColor = '#252c34';
+    btnCity.style.color = '#c3c9b3';
+  } else {
+    btnCity.style.background = '#262a30';
+    btnCity.style.borderColor = '#b9f36a';
+    btnCity.style.color = '#b9f36a';
+    btnHot.style.background = 'transparent';
+    btnHot.style.borderColor = '#252c34';
+    btnHot.style.color = '#c3c9b3';
+  }
+  plotMarkers();
+}
+
+function resetMapView() {
+  if (!map) return;
+  map.flyTo([16.45, 80.53], 11, { duration: 0.8 });
+  closeInspector();
+}
+
+function viewLocationOnMap(locId) {
+  switchTab('map');
+  setTimeout(() => {
+    selectProblemCard(locId, true);
+  }, 200);
+}
+
+// ===== CHARTS =====
+Chart.defaults.color='#c3c9b3';
+Chart.defaults.font.family="'Space Grotesk', sans-serif";
+Chart.defaults.font.size=11;
+
+function initRoadChart(){
+  new Chart(document.getElementById('roadChart'),{
+    type:'doughnut',
+    data:{labels:['Critical','Poor','Fair','Good'],datasets:[{data:[78,309,383,230],backgroundColor:['#ff5c5c','#ffb955','#7cb9ff','#b9f36a'],borderColor:'#0a0f13',borderWidth:2,hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} (${((c.raw/1000)*100).toFixed(1)}%)`}}}}
+  });
+}
+
+function initTrendChart(){
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  new Chart(document.getElementById('trendChart'),{
+    type:'bar',
+    data:{labels:months,datasets:[
+      {label:'Incidents',data:MONTH_INC,backgroundColor:'rgba(185,243,106,.2)',borderColor:'#b9f36a',borderWidth:1.5,borderRadius:3,order:2},
+      {label:'Complaints',data:MONTH_COMP,type:'line',borderColor:'#ffb955',backgroundColor:'rgba(255,185,85,.08)',borderWidth:2,pointRadius:3,pointBackgroundColor:'#ffb955',tension:.3,fill:true,order:1}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(67,73,56,.4)'},ticks:{color:'#c3c9b3'}},y:{grid:{color:'rgba(67,73,56,.4)'},ticks:{color:'#c3c9b3'},min:500}}}
+  });
+}
+
+let zoneChartInit=false;
+function initZoneChart(){
+  if(zoneChartInit)return; zoneChartInit=true;
+  const sorted=[...ZONE_STATS].sort((a,b)=>b.avg_score-a.avg_score);
+  new Chart(document.getElementById('zoneChart'),{
+    type:'bar',
+    data:{labels:sorted.map(z=>z.zone.replace('ZONE_','Z')),datasets:[{label:'Avg Score',data:sorted.map(z=>z.avg_score),backgroundColor:sorted.map(z=>z.avg_score>=47?'rgba(185,243,106,.5)':'rgba(185,243,106,.2)'),borderColor:'#b9f36a',borderWidth:1,borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` Avg Score: ${c.raw.toFixed(1)} — ${sorted[c.dataIndex].locs} locations`}}},scales:{x:{grid:{display:false},ticks:{color:'#c3c9b3',font:{size:10}}},y:{grid:{color:'rgba(67,73,56,.4)'},ticks:{color:'#c3c9b3'},min:44,max:49}}}
+  });
+}
+
+// ===== TAB NAVIGATION =====
+function switchTab(tabId){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  
+  const targetPanel = document.getElementById('tab-'+tabId);
+  if (targetPanel) {
+    targetPanel.classList.add('active');
+    if (tabId === 'map') {
+      targetPanel.style.display = 'block';
+    } else {
+      targetPanel.style.display = 'block';
+    }
+  }
+
+  const nb=document.getElementById('nav-'+tabId);
+  if(nb) nb.classList.add('active');
+  
+  if(tabId==='zones') setTimeout(initZoneChart, 50);
+  if(tabId==='map') {
+    setTimeout(initMapIfNeeded, 100);
+  }
+}
+
+// ===== SEARCH BAR =====
+document.getElementById('search-input').addEventListener('input',function(){
+  const q=this.value.trim().toUpperCase();
+  if(!q) return;
+  const match = TOP31.find(l=>l.location_id.toUpperCase().includes(q));
+  if(match) {
+    viewLocationOnMap(match.location_id);
+  }
+});
+
+// ===== INITIALIZE =====
+renderOverviewRows();
+renderWorklist();
+renderZones();
+initRoadChart();
+initTrendChart();
+</script>
+</body>
+</html>

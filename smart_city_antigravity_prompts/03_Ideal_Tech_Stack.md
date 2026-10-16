@@ -1,0 +1,150 @@
+# Ideal Tech Stack — Antigravity Implementation Guidance
+
+> **Use this file with `01_Context.md` and `02_Solution.md`.** The frontend will be provided by me via **Stitch MCP**. This stack is a target, not permission to overwrite an existing working project structure. Inspect the repository and Stitch output first, then follow the closest compatible implementation path.
+
+## 1. Architecture preference
+
+Use a small, modular web application with a clear separation of concerns:
+
+1. **Stitch-provided frontend** — presentation, user interactions, charts, worklist, location details, and map. Preserve the supplied design and framework.
+2. **Backend API** — typed REST endpoints for ingestion status, aggregates, priority scoring, filters, details, trends, and exports.
+3. **Data/domain layer** — validated CSV loading, independent aggregations, deterministic scoring, transparent intervention rules.
+4. **Persistence layer** — SQL database for imported source records and/or derived summaries where it improves repeatability; raw CSV files remain unchanged.
+5. **Automated tests** — schema/data checks, score properties, endpoints, and export behavior.
+
+Do not add microservices, a message broker, Kubernetes, or a large analytics platform for a dataset of this size. Keep it easy to run locally and easy to deploy later.
+
+## 2. Preferred backend
+
+- **Language:** Python 3.12+ (use the version supported by the environment/repository).
+- **API framework:** FastAPI.
+- **Request/response validation:** Pydantic v2 models.
+- **Data wrangling:** pandas for CSV ingestion, validation, group-by aggregation, and exports. Keep transformations in explicit service functions, not inline in route handlers.
+- **Database access:** SQLAlchemy 2.x with Alembic migrations if a relational database is configured.
+- **Database:** PostgreSQL for a shared/deployable environment. PostGIS is optional if actual geospatial queries are needed; for this 1,000-point synthetic demo, do not add PostGIS solely for displaying points on a map.
+- **Local fallback:** SQLite is acceptable for an easy local prototype if it keeps setup simple and the persistence layer is abstracted. Use a single documented database configuration path rather than separate implementations.
+- **CSV export:** Python standard library or pandas CSV export, with safe handling of quoting and stable columns.
+- **Testing:** pytest, FastAPI TestClient/httpx compatible with the chosen versions.
+- **Lint/format:** Ruff for Python formatting and linting; use type hints throughout.
+
+Suggested backend layout (adapt to the current repository instead of forcing this exact tree):
+
+```text
+backend/
+  app/
+    main.py
+    api/
+      routes/
+    core/
+      config.py
+    schemas/
+    models/
+    services/
+      ingestion.py
+      validation.py
+      aggregation.py
+      scoring.py
+      interventions.py
+      exports.py
+    repositories/
+  tests/
+  pyproject.toml
+```
+
+### Backend implementation rules
+
+- Load environment configuration through settings; include `.env.example` with placeholders only.
+- Never commit secrets or local credentials.
+- Keep score weights, severity weights, road-condition mappings, activity mappings, and tier thresholds in one typed configuration module or editable config file.
+- Keep deterministic pure functions for scoring and aggregation so unit tests can validate them without an HTTP server or database.
+- Use transactions and stable IDs for imports when using a database; re-imports must be idempotent.
+- Add structured logs that do not dump complete datasets or environment secrets.
+- Document whether aggregate values are computed on request or materialized during ingestion.
+
+## 3. Frontend: Stitch MCP is the source of UI
+
+**Do not pick a new frontend framework until inspecting what Stitch MCP provides.** Preserve the generated code, components, styles, assets, responsive behavior, and visual hierarchy.
+
+If Stitch supplies a React/TypeScript frontend, prefer the existing setup. If it supplies Next.js, continue with Next.js rather than creating another React/Vite app. If it provides another compatible frontend structure, integrate the API using that framework's conventions instead of forcing a migration.
+
+For data integration:
+
+- Use TypeScript interfaces/types that match the Pydantic API response models if the frontend is TypeScript-based.
+- Centralize API calls in a typed API client rather than embedding `fetch()` logic into every component.
+- Read API base URLs from environment configuration, with a documented local default.
+- Keep sorting, filtering, pagination, loading, errors, and empty states coherent with the existing Stitch component design.
+- Never hardcode KPIs or final scores in UI components.
+- Do not duplicate scoring logic in JavaScript/TypeScript; render the backend's score and component explanation.
+- Do not introduce a second component library or CSS framework if Stitch already uses one.
+
+### Charts and maps
+
+Use the charting and mapping libraries already generated by Stitch when practical. If the Stitch output does not include them and the interface requires them, choose one library rather than stacking alternatives:
+
+- Charts: Recharts for a React/TypeScript frontend, or the framework-native option already installed.
+- Map: Leaflet or MapLibre GL, whichever is compatible with the Stitch output and deployment constraints.
+
+All map experiences must show a visible synthetic-coordinate disclaimer and must not geocode or infer actual civic locations.
+
+## 4. Database and data lifecycle
+
+Recommended logical tables if using a relational database:
+
+- `locations` — keyed by `location_id`, retaining the location source fields.
+- `incidents` — keyed by `incident_id`, foreign-keyed by `location_id`.
+- `public_complaints` — keyed by `complaint_id`, foreign-keyed by `location_id`.
+- Optional `location_priority_snapshots` — only if caching/versioned score snapshots is useful; include `score_version` and generation timestamp.
+
+Store timestamps as timezone-naive synthetic source timestamps unless a justified timezone convention is introduced; do not silently invent a timezone. Preserve source numeric values. Use database constraints where practical for unique IDs and foreign keys, with application validation for source category domains.
+
+A file-backed prototype without a database is acceptable if the repository is deliberately lightweight, but the data service must still expose the same API contracts and use validated, reproducible loading. Do not mix ad-hoc in-memory values with persisted values in a way that changes scores between endpoints.
+
+## 5. API and security basics
+
+- REST/JSON for application data; CSV only for deliberate export endpoints.
+- Pydantic models for validated input and stable output schemas.
+- CORS configured narrowly for the frontend's local/deployed origin, not wildcarded by default in production.
+- Validate filter, date, sort, pagination, and export parameters.
+- Do not build dynamic SQL from user-provided column names or expressions; map accepted sort keys to fixed fields.
+- Do not expose arbitrary filesystem paths, raw server traces, `.env` values, or database errors to clients.
+- This prototype does not require authentication unless the existing repository requires it; do not add user accounts as a distraction from the core goal.
+
+## 6. Developer experience
+
+Provide:
+
+- A root README or update the existing README with prerequisites, environment setup, data-file placement, import/seed command, test command, backend run command, frontend run command, and API documentation URL.
+- `.env.example` with a sample `DATABASE_URL` and API/frontend URL settings where relevant; no secrets.
+- A single-command test path where possible.
+- A health/readiness endpoint that makes it clear whether the datasets have loaded.
+- An OpenAPI schema generated by FastAPI and documented key response payloads.
+- A short explanation of the priority-score formula and its version.
+
+Use repository-appropriate commands. Do not invent commands that have not been configured in package scripts or project tooling.
+
+## 7. Recommended implementation sequence
+
+1. Inspect the repository, environment, CSV locations, and Stitch MCP output.
+2. Establish validated schemas and tests for the raw datasets.
+3. Implement idempotent ingestion and aggregation services.
+4. Implement score calculation, score explanations, score configuration, and unit tests.
+5. Implement suggested-intervention rules and tests.
+6. Implement typed API schemas and endpoints.
+7. Implement persistent storage if configured, without changing the domain contract.
+8. Integrate the Stitch frontend via a typed API client without redesigning its UI.
+9. Add trend, zone-normalization, detail, and export support.
+10. Run all tests, launch the app, smoke-test the endpoints, and fix issues.
+11. Document setup and verify the commands in a clean local run.
+
+## 8. Acceptance checklist
+
+- [ ] Existing Stitch frontend is preserved; no competing frontend is created.
+- [ ] The three CSVs are ingested without modifying raw data.
+- [ ] Data validation catches missing columns, duplicate IDs, invalid domains, and broken joins.
+- [ ] Aggregation avoids many-to-many joins.
+- [ ] Score logic is deterministic, configurable, versioned, and fully tested.
+- [ ] All API responses use stable, documented schemas.
+- [ ] Filters, rankings, and zone comparisons are computed from loaded data.
+- [ ] Synthetic-data disclaimers are prominent and present in exports/documentation.
+- [ ] No credentials, geocoding lookups, live dispatch behavior, or fabricated records are added.
+- [ ] Setup, import, run, and test instructions are verified.
